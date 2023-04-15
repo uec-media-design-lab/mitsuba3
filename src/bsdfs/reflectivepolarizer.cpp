@@ -111,17 +111,18 @@ public:
         bs.sampled_type = +BSDFFlags::Null;
         bs.sampled_component = 0;
 
+        UnpolarizedSpectrum reflectance = m_reflectance->eval(si, active);
         UnpolarizedSpectrum transmittance = m_transmittance->eval(si, active);
 
         if constexpr (is_polarized_v<Spectrum>) {
             if (!m_polarizing) {
-                return { bs, mueller::absorber(0.5f*transmittance) };
+                return { bs, dr::select(selected_r, mueller::absorber(0.5f*reflectance), mueller::absorber(0.5f*transmittance)) };
             }
 
             using Vector3fS = Vector<UnpolarizedSpectrum, 3>;
 
             // Query rotation angle
-            UnpolarizedSpectrum theta = dr::deg_to_rad(m_theta->eval(si, active));
+            UnpolarizedSpectrum theta = dr::deg_to_rad(dr::select(selected_r, m_theta->eval(si, active)+90.f, m_theta->eval(si, active)));
             auto [sin_theta, cos_theta] = dr::sincos(theta);
 
             // Get standard Mueller matrix for a linear polarizer.
@@ -145,11 +146,11 @@ public:
                                                         mueller::stokes_basis(forward));
 
             // Handle potential absorption if transmittance < 1.0
-            M *= mueller::absorber(transmittance);
+            M *= dr::select(selected_r, mueller::absorber(reflectance), mueller::absorber(transmittance));
 
             return { bs, M };
         } else {
-            return { bs, 0.5f * transmittance };
+            return { bs, dr::select(selected_r, 0.5f * reflectance, 0.5f * transmittance) };
         }
     }
 
