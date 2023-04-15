@@ -83,6 +83,7 @@ public:
 
     LinearPolarizer(const Properties &props) : Base(props) {
         m_theta = props.texture<Texture>("theta", 0.f);
+        m_reflectance = props.texture<Texture>("reflectance", 1.f);
         m_transmittance = props.texture<Texture>("transmittance", 1.f);
         m_polarizing = props.get<bool>("polarizing", true);
 
@@ -93,17 +94,19 @@ public:
 
     void traverse(TraversalCallback *callback) override {
         callback->put_object("theta",         m_theta.get(),         ParamFlags::Differentiable | ParamFlags::Discontinuous);
+        callback->put_object("reflectance", m_reflectance.get(), +ParamFlags::Differentiable);
         callback->put_object("transmittance", m_transmittance.get(), +ParamFlags::Differentiable);
     }
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx, const SurfaceInteraction3f &si,
-                                             Float /* sample1 */, const Point2f &/* sample2 */,
+                                             Float sample1, const Point2f &/* sample2 */,
                                              Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
-        bs.wo = -si.wi;
-        bs.pdf = 1.f;
+        Mask selected_r = sample <= 0.5f;
+        bs.wo = dr::select(selected_r, reflect(si.wi), -si.wi);
+        bs.pdf = 0.5f;
         bs.eta = 1.f;
         bs.sampled_type = +BSDFFlags::Null;
         bs.sampled_component = 0;
@@ -208,6 +211,7 @@ public:
         std::ostringstream oss;
         oss << "LinearPolarizer[" << std::endl
             << "  theta = " << string::indent(m_theta) << std::endl
+            << "  reflectance = " << string::indent(m_reflectance) << std::endl
             << "  transmittance = " << string::indent(m_transmittance) << std::endl
             << "  polarizing = " << m_polarizing << std::endl
             << "]";
@@ -218,6 +222,7 @@ public:
 private:
     bool m_polarizing;
     ref<Texture> m_theta;
+    ref<Texture> m_reflectance;
     ref<Texture> m_transmittance;
 };
 
