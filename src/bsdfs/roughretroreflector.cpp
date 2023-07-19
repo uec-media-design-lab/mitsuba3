@@ -86,9 +86,52 @@ public:
         return 1.f;
     }
 
-    std::string to_string() const override { return "RoughRetroreflector[]"; }
+    std::string to_string() const override {
+        std::ostringstream oss;
+        oss << "RoughRetroeflector[" << std::endl
+            << "  distribution = "     << m_type << "," << std::endl;
 
+        oss << "  m_pa = " << m_pa << "," << std::endl
+            << "  m_qa = " << m_qa << "," << std::endl
+            << "  m_ra = " << m_ra << "," << std::endl
+            << "  m_pb = " << m_pb << "," << std::endl
+            << "  m_qb = " << m_qb << "," << std::endl
+            << "  m_rb = " << m_rb << "," << std::endl;
+
+        if (!has_flag(m_flags, BSDFFlags::Anisotropic)) {
+            oss << "  alpha = "             << string::indent(m_alpha_v_surface) << "," << std::endl;
+        } else {
+            oss << "  alpha_u_surface = "   << string::indent(m_alpha_u_surface) << "," << std::endl
+                << "  alpha_v_surface = "   << string::indent(m_alpha_v_surface) << "," << std::endl
+                << "  alpha_u_internal = "  << string::indent(m_alpha_u_internal) << "," << std::endl
+                << "  alpha_v_internal = "  << string::indent(m_alpha_v_internal) << "," << std::endl;
+        }
+
+        oss << "  surface_reflectance = "   << string::indent(m_surface_reflectance) << "," << std::endl;
+
+        oss << "  internal_reflectance = " << string::indent(m_internal_reflectance) << ", " << std::endl;
+
+        oss << "  eta = "       << m_eta << std::endl
+            << "  eta_air = "   << m_eta_air << std::endl
+            << "  eta_mat = "   << m_eta_mat << std::endl
+            << "]";
+        return oss.str();
+    }
     MI_DECLARE_CLASS()
+private:
+    Normal3f m_pa, m_qa, m_ra;
+    Normal3f m_pb, m_qb, m_rb;
+    Normal3f n;
+    ScalarFloat m_eta, m_inv_eta;
+    ScalarFloat m_eta_mat, m_eta_air;
+    ref<Texture> m_eta_base, m_k_base;
+    ref<Texture> m_alpha_u_surface,  m_alpha_v_surface;
+    ref<Texture> m_alpha_u_internal, m_alpha_v_internal;
+    MicrofacetType m_type;
+    bool m_sample_visible;
+    Float diffuseFactor;
+    Float m_surface_reflectance;
+    Float m_internal_reflectance;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector, BSDF)
