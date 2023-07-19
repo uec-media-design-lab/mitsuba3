@@ -39,6 +39,22 @@ public:
         dr::set_attr(this, "flags", m_flags);
     }
 
+    void traverse(TraversalCallback *callback) override {
+        if (!has_flag(m_flags, BSDFFlags::Anisotropic))
+            callback->put_object("alpha", m_alpha_u_surface.get());
+        else {
+            callback->put_object("alpha_u_surface", m_alpha_u_surface.get());
+            callback->put_object("alpha_v_surface", m_alpha_v_surface.get());
+            callback->put_object("alpha_u_internal", m_alpha_u_internal.get());
+            callback->put_object("alpha_v_internal", m_alpha_v_internal.get());
+        }
+        callback->put_parameter("eta", m_eta);
+        if (m_surface_reflectance)
+            callback->put_object("surface_reflectance", m_surface_reflectance.get());
+        if (m_internal_reflectance)
+            callback->put_object("internal_reflectance", m_internal_reflectance.get());
+    }
+
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
                                              Float /*sample1*/,
