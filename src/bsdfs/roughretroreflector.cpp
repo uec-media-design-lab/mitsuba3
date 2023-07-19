@@ -536,49 +536,390 @@ public:
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
-                                             Float /*sample1*/,
-                                             const Point2f & /*sample2*/,
+                                             Float sample1,
+                                             const Point2f &sample2,
                                              Mask active) const override {
-        MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
-        bool sample_transmission = ctx.is_enabled(BSDFFlags::Null, 0);
-        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
-        Spectrum result(0.f);
-        if (sample_transmission) {
-            bs.wo                = -si.wi;
-            bs.sampled_component = 0;
-            bs.sampled_type      = UInt32(+BSDFFlags::Null);
-            bs.eta               = 1.f;
-            bs.pdf               = 1.f;
+        MTS_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
+        bool has_reflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 0);
+        bool has_retroreflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
+        has_retroreflection &= ctx.is_enabled(BSDFFlags::GlossyTransmission, 1);
+        bool has_diffusereflection = ctx.is_enabled(BSDFFlags::DiffuseReflection, 2);
+        // printf("asu: %f\tasv: %f\taiu: %f\taiv: %f\n",
+        // m_alpha_u_surface->eval_1(si, active),
+        // m_alpha_v_surface->eval_1(si, active),
+        // m_alpha_u_internal->eval_1(si, active),
+        // m_alpha_v_internal->eval_1(si, active));
+        Float r1 = 0.f;                 // 汎用乱数(1D)
+        Point2f r2 = Point2f(0.f, 0.f); // 汎用乱数(2D)
 
-            /* In an ordinary BSDF we would use depolarizer<Spectrum>(1.f) here
-               to construct a depolarizing Mueller matrix. However, the null
-               BSDF should leave the polarization state unaffected, and hence
-               this is one of the few places where it is safe to directly use a
-               scalar (which will broadcast to the identity matrix in polarized
-               rendering modes). */
-            result               = 1.f;
+        BSDFSample3f bs = zero<BSDFSample3f>();
+        Spectrum weight = 0.f;
+
+        auto rng = setRandomGenerator(sample1*1000000);
+        MicrofacetDistribution distr_surface(m_type, m_alpha_u_surface->eval_1(si, active), m_alpha_v_surface->eval_1(si, active), m_sample_visible);
+        MicrofacetDistribution sample_distr_surface(distr_surface);
+        MicrofacetDistribution distr_internal(m_type, m_alpha_u_internal->eval_1(si, active), m_alpha_v_internal->eval_1(si, active), m_sample_visible);
+        MicrofacetDistribution sample_distr_internal(distr_internal);
+        
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        active &= neq(cos_theta_i, 0.f);
+        
+        if (unlikely(!m_sample_visible)) {  // Walter's trick
+            sample_distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(cos_theta_i)));
+            sample_distr_internal.scale_alpha(1.2f - .2f * sqrt(abs(cos_theta_i)));
         }
 
-        return { bs, result };
+        // 最初の表面
+        auto [mi, Di] = sample_distr_surface.sample(mulsign(si.wi, cos_theta_i), sample2);
+        auto [r_i, cos_theta_v1, eta_i_v1, eta_v1_i] = fresnel(dot(si.wi, mi), Float(m_eta));
+        Float Fi = r_i;
+        Vector3f wv1 = refract(si.wi, mi, cos_theta_v1, eta_v1_i);
+
+        // 表面反射かそれ以外か分ける
+        Mask selected_r = Mask(sample1 <= Fi) && active;
+        Mask selected_t = Mask(sample1 >  Fi) && active;
+        Mask selected_rr = false;   // decide later
+        Mask selected_d = false;
+
+        // 内部反射のルートを計算する
+        Vector3f wo_rr = Vector3f(0.f, 0.f, -1.f);
+        Float pathProb = 0.f;
+        Spectrum F1 = 0.f;
+        Spectrum F2 = 0.f;
+        Spectrum F3 = 0.f;
+        Float Fo = 0.f;
+        Float D1 = 0.f;
+        Float D2 = 0.f;
+        Float D3 = 0.f;
+        Float Do = 0.f;
+        // Vectors, Normals
+        Normal3f n1 = n, n2 = n, n3 = n;    // ideal
+        Normal3f m1 = n, m2 = n, m3 = n, mo = n;    // sampled
+        Vector3f wv2, wv3, wv4;
+
+        // Complex refractive index
+        Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
+                                                m_k_base->eval(si, active));
+        if(any_or<true>(selected_t)) {
+            // ベース法線決定
+            auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, rng);
+            auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, rng);
+            r1 = rand(rng);
+            Mask elemA = (r1 <= 0.5f) && active;
+            Mask elemB = (r1 >  0.5f) && active;
+            n1 = select(elemA, a1, b1);
+            n2 = select(elemA, a2, b2);
+            n3 = select(elemA, a3, b3);
+            pathProb = select(elemA, pa, pb);
+
+            // n1反射
+            r2 = rand2(rng);
+            std::tie(m1, D1) = sample_distr_internal.sample(rotateVector(-wv1, n1, n), r2);
+            m1 = rotateVector(m1, n, n1);
+            F1 = fresnel_conductor(UnpolarizedSpectrum(dot(-wv1, m1)), base_eta_k);
+            wv2 = reflect(-wv1, m1);
+            // printf("%f, %f, %f, %f, %f\n", mag(wv1), mag(rotateVector(-wv1, n1, n)), mag(std::get<0>(sample_distr_internal.sample(rotateVector(-wv1, n1, n), r2))), mag(m1), mag(wv2));
+
+            // n2反射
+            r2 = rand2(rng);
+            std::tie(m2, D2) = sample_distr_internal.sample(rotateVector(-wv2, n2, n), r2);
+            m2 = rotateVector(m2, n, n2);
+            F2 = fresnel_conductor(UnpolarizedSpectrum(dot(-wv2, m2)), base_eta_k);
+            wv3 = reflect(-wv2, m2);
+
+            // n3反射
+            r2 = rand2(rng);
+            std::tie(m3, D3) = sample_distr_internal.sample(rotateVector(-wv3, n3, n), r2);
+            m3 = rotateVector(m3, n, n3);
+            F3 = fresnel_conductor(UnpolarizedSpectrum(dot(-wv3, m3)), base_eta_k);
+            wv4 = reflect(-wv3, m3);
+
+            // n透過
+            Float eta_v4_o, eta_o_v4, cos_theta_o;
+            r2 = rand2(rng);
+            std::tie(mo, Do) = sample_distr_surface.sample(wv4, r2);
+            std::tie(Fo, cos_theta_o, eta_v4_o, eta_o_v4) = fresnel(dot(-wv4, mo), Float(m_eta));
+            wo_rr = refract(-wv4, mo, cos_theta_o, eta_o_v4);
+            // printf("(%f, %f, %f)check: rotate from(%f, %f, %f)to(%f, %f, %f) by <%f, %f, %f>\n", m2.x(), m2.y(), m2.z(), -wv2.x(), -wv2.y(), -wv2.z(), rotateVector(-wv2, n2, n).x(), rotateVector(-wv2, n2, n).y(), rotateVector(-wv2, n2, n).z(), n2.x(), n2.y(), n2.z());
+            // printf("(%f, %f, %f, %f, %f, %f)  [%f, %f, %f, %f, %f]\n", 
+            //         dot(si.wi,si.wi), dot(wv1, wv1), dot(wv2, wv2), dot(wv3, wv3), dot(wv4, wv4), dot(wo_rr, wo_rr),
+            //         dot(mi, mi), dot(m1, m1), dot(m2, m2), dot(m3, m3), dot(mo, mo));
+            // printf("[%f, %f, %f, %f, %f]\n",
+            //     dot(mi, n), dot(m1, n1), dot(m2, n2), dot(m3, n3), dot(mo, n));
+            // printf("[%f, %f, %f, %f, %f]  <%f, %f, %f> <%f, %f, %f>\n",
+            //     dot(mi, n), dot(m1, n1), dot(m2, n2), dot(m3, n3), dot(mo, n),
+            //     n2.x(), n2.y(), n2.z(), m2.x(), m2.y(), m2.z());
+        }
+        // incorrectPath: 経路決定後、次の面には裏面からしか入射しない場合
+        Mask incorrectRRpath = !isfinite(Fo);
+        F1 = select(incorrectRRpath, 0.f, F1);
+        F2 = select(incorrectRRpath, 0.f, F2);
+        F3 = select(incorrectRRpath, 0.f, F3);
+        Fo = select(incorrectRRpath, 0.f, Fo);
+
+        r1 = rand(rng);
+
+        // ERA, 再帰反射可能な領域。拡散と再帰反射の割合を制御する
+        Float era_cos_i = Frame3f::cos_theta(-wv1);
+        auto [era_sin_phi, era_cos_phi] = Frame3f::sincos_phi(-wv1);
+        Float era = ERA(era_cos_i, era_sin_phi, era_cos_phi);
+
+        selected_rr = !selected_r && (r1<=(1.f-Fi)*(1.f-Fo) * era) && !incorrectRRpath && active;
+        selected_d = !selected_r && !selected_rr && active;
+
+        // printf("[%f, %f, %f]", r1, Fi, (1.f-Fi)*F1*F2*F3*(1.f-Fo));
+        // printf("[%f, %f, %f, %f, %f](%f, %f)\n", Fi, F1, F2, F3, Fo, dot(-wv3, m3), dot(-wv4, mo));
+        // printV(-wv3);printN(m3);printf(":%f\n", F3);
+        /*
+        printf("(%f, %f, %f)-s>(%f, %f, %f)-1>(%f, %f, %f)-2>(%f, %f, %f)-3>(%f, %f, %f)-s>(%f, %f, %f)  <%f, %f, %f> <%f, %f, %f> <%f, %f, %f>\n", 
+                si.wi.x(), si.wi.y(), si.wi.z(),
+                wv1.x(), wv1.y(), wv1.z(),
+                wv2.x(), wv2.y(), wv2.z(),
+                wv3.x(), wv3.y(), wv3.z(),
+                wv4.x(), wv4.y(), wv4.z(),
+                wo_rr.x(), wo_rr.y(), wo_rr.z(),
+                m1.x(), m1.y(), m1.z(),
+                m2.x(), m2.y(), m2.z(),
+                m3.x(), m3.y(), m3.z());
+        */
+       
+        // printN(mi);
+        // printN(m1);
+        // printN(m2);
+        // printN(m3);
+        // printN(mo);printf("\n");
+        Float cos_theta_o = Frame3f::cos_theta(wo_rr);
+
+        // それぞれの表面のBSDFSampleを作る
+        // 表面
+        if (any_or<true>(selected_r)) {
+            // printf("r");
+            bs.wo[selected_r] = reflect(si.wi, mi);
+            bs.pdf = select(selected_r, Fi*Di*rcp(4*dot(si.wi,mi)), bs.pdf);
+            bs.eta = 1.f;
+            bs.sampled_type = select(selected_r, UInt32(+BSDFFlags::GlossyReflection), bs.sampled_type);
+            bs.sampled_component = select(selected_r, UInt32(0), bs.sampled_component);
+            UnpolarizedSpectrum weight_r = 0.f;
+            if (likely(m_sample_visible)) {
+                weight_r = distr_surface.smith_g1(bs.wo, mi);
+            } else {
+                weight_r = distr_surface.G(si.wi, bs.wo, mi) * dot(si.wi, mi) /
+                        (cos_theta_i * Frame3f::cos_theta(mi));
+            }
+            weight = select(selected_r, weight_r, weight);
+            weight[selected_r] *= m_surface_reflectance;
+        }
+
+        // 再帰
+        if (any_or<true>(selected_rr)) {
+            // printf("R");
+            // printV(si.wi);printV(wo_rr); printf("\n");
+            bs.wo[selected_rr] = wo_rr;
+            bs.eta = select(selected_rr, 1.f, bs.eta);
+            bs.sampled_type = select(selected_rr, UInt32(+BSDFFlags::GlossyTransmission | +BSDFFlags::GlossyReflection), bs.sampled_type);
+            bs.sampled_component = select(selected_rr, UInt32(1), bs.sampled_component);
+            Spectrum weight_rr = 0.f;
+            // ヤコビアン(bs.pdf)
+            Float dwmi_dwi = sqr(m_eta_air)*abs(dot(si.wi, mi)) / sqr(m_eta_air*dot(si.wi, mi) + m_eta_mat*dot(wv1, mi));
+            Float dwm1_dwv1 = rcp(4.f * abs(dot(-wv1, m1)));
+            Float dwm2_dwv2 = rcp(4.f * abs(dot(-wv2, m2)));
+            Float dwm3_dwv3 = rcp(4.f * abs(dot(-wv3, m3)));
+            Float dwmo_dwv4 = sqr(m_eta_air)*abs(dot(wo_rr, mo)) / sqr(m_eta_mat*dot(-wv4, mo) + m_eta_air*dot(wo_rr, mo));
+            // bs.pdf = select(selected_rr, 1.f, bs.pdf);
+            bs.pdf = select(selected_rr, (1.f-Fi)*(1.f-Fo) * clamp(Di*D1*D2*D3*Do, 0.f, 1000000000000.f) * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb * era, bs.pdf);
+            // bs.pdf = select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) *  dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * Di*D1*D2*D3*Do * pathProb, bs.pdf);
+            // bs.pdf = select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb, bs.pdf);
+            // bs.pdf = select(selected_rr, 1.f* pathProb, bs.pdf);
+            // printf("<F:%f, D:%f, J:%f, p:%f, pdf:%f>\n",  (1.f-Fi)*F1*F2*F3*(1.f-Fo), min(Di*D1*D2*D3*Do, 1000000000), dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4, pathProb, bs.pdf);
+            // printV(si.wi);printV(wv1);printV(wv2);printV(wv3);printV(wv4);printV(wo_rr);
+            // printf("<%f, %f, %f, %f, %f, -> %f>\n",  Di, D1, D2, D3, Do, Di*D1*D2*D3*Do);
+            //////////////////////////// pdf /////////////////////////////////
+            if (likely(m_sample_visible)) {
+                weight_rr = distr_surface.smith_g1(wv1, mi) *
+                            distr_internal.smith_g1(rotateVector(wv2, n1, n), rotateNormal(m1, n1, n)) *
+                            distr_internal.smith_g1(rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)) *
+                            distr_internal.smith_g1(rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
+                            distr_surface.smith_g1(wo_rr, mo);
+                // printf("<%f, %f>\t", distr_surface.smith_g1(wv1, mi) *
+                //             distr_internal.smith_g1(rotateVector(wv2, n1, n), rotateNormal(m1, n1, n)) *
+                //             distr_internal.smith_g1(rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)) *
+                //             distr_internal.smith_g1(rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
+                //             distr_surface.smith_g1(wo_rr, mo), weight_rr);
+            } else {
+                weight_rr = distr_surface.G(si.wi, wv1, mi) *
+                            distr_internal.G(rotateVector(-wv1, n1, n), rotateVector(wv2, n1, n), rotateNormal(m1, n1, n)) *
+                            distr_internal.G(rotateVector(-wv2, n2, n), rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)) *
+                            distr_internal.G(rotateVector(-wv3, n3, n), rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
+                            distr_surface.G(-wv4, wo_rr, mo) *
+                            abs(dot(si.wi,mi)*dot(wv1,m1)*dot(wv2,m2)*dot(wv3,m3)*dot(wv4,mo)) *
+                            rcp(cos_theta_i*cos_theta_v1 * dot(wv1,n1)*dot(wv2,n1) * dot(wv2,n2)*dot(wv3,n2) * dot(wv3,n3)*dot(wv4,n3) * dot(wv4,n)*cos_theta_o);
+            }
+            weight = select(selected_rr, weight_rr, weight);
+            // printf("[%f, %f, %f, %f, %f -> %f], %f\n", distr_surface.smith_g1(wv1, mi),
+            //                 distr_internal.smith_g1(rotateVector(wv2, n1, n), rotateNormal(m1, n1, n)),
+            //                 distr_internal.smith_g1(rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)),
+            //                 distr_internal.smith_g1(rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)),
+            //                 distr_surface.smith_g1(wo_rr, mo), distr_surface.smith_g1(wv1, mi) *
+            //                 distr_internal.smith_g1(rotateVector(wv2, n1, n), rotateNormal(m1, n1, n)) *
+            //                 distr_internal.smith_g1(rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)) *
+            //                 distr_internal.smith_g1(rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
+            //                 distr_surface.smith_g1(wo_rr, mo), weight_rr);
+            // weight = select(selected_rr, 1.f, weight);
+            weight[selected_rr] *= m_surface_reflectance*m_surface_reflectance;
+            weight[selected_rr] *= m_internal_reflectance*m_internal_reflectance*m_internal_reflectance;
+            
+        }
+
+        // 拡散
+        if (any_or<true>(selected_d)) {
+            // printf("D");
+            r2 = rand2(rng);
+            Vector3f wo_diffuse = warp::square_to_cosine_hemisphere(r2);
+            bs.wo[selected_d] = wo_diffuse;
+            bs.pdf = select(selected_d, (1.f-Fi) * (era * Fo * pathProb + (1.f-era)) * warp::square_to_cosine_hemisphere_pdf(wo_diffuse), bs.pdf);
+            bs.eta = select(selected_d, 1.f, bs.eta);
+            bs.sampled_type = select(selected_d, UInt32(+BSDFFlags::DiffuseReflection), bs.sampled_type);
+            bs.sampled_component = select(selected_d, UInt32(2), bs.sampled_component);
+            weight = select(selected_d, 1.f, weight);
+        }
+        // weight = 0.1f;
+        // printf("<%f, %f>\n",(1.f-Fi)*F1*F2*F3*(1.f-Fo), (1.f-Fi)*(1.f-F1*F2*F3*(1.f-Fo)));
+        
+        return {bs, weight};
     }
 
-    Spectrum eval(const BSDFContext & /*ctx*/,
-                  const SurfaceInteraction3f & /*si*/, const Vector3f & /*wo*/,
-                  Mask /*active*/) const override {
-        return 0.f;
+    Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
+                  const Vector3f &wo, Mask active) const override {
+        MTS_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+        MicrofacetDistribution distr_surface(m_type,
+                                             m_alpha_u_surface->eval_1(si, active),
+                                             m_alpha_v_surface->eval_1(si, active),
+                                             m_sample_visible);
+        // return 1.f;
+        // BRDF, activeチェック
+        Spectrum value = 0.f;
+        bool has_reflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 0);
+        bool has_retroreflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
+        has_retroreflection &= ctx.is_enabled(BSDFFlags::GlossyTransmission, 1);
+        bool has_diffusereflection = ctx.is_enabled(BSDFFlags::DiffuseReflection, 2);
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        Float cos_theta_o = Frame3f::cos_theta(wo);
+        active &= (cos_theta_i>0.f) && (cos_theta_o>0.f);
+        if (unlikely(none_or<false>(active)))
+            return 0.f;
+        // Complex refractive index
+        Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
+                                                m_k_base->eval(si, active));
+        // 12経路の内部相互作用の評価
+        Path p[12] = {
+            Path(n, m_pa, m_qa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pa, m_ra, m_qa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qa, m_pa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qa, m_ra, m_pa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_ra, m_pa, m_qa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_ra, m_qa, m_pa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pb, m_qb, m_rb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pb, m_rb, m_qb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qb, m_pb, m_rb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qb, m_rb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_rb, m_pb, m_qb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_rb, m_qb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+        };
+
+        Float brdf_r  = 0.f;
+        Spectrum brdf_rr = 0.f;
+        Spectrum brdf_d  = 0.f;
+        // 表面
+        Vector3f m = normalize(si.wi + wo);
+        Float F = std::get<0>(fresnel(dot(si.wi, m), Float(m_eta)));
+        Float G = distr_surface.G(si.wi, wo, m);
+        Float D = distr_surface.eval(m);
+        brdf_r = F*G*D* 0.25f*rcp(cos_theta_i); // cos_theta_o打ち消し
+        // printf("(%f, %f, %f, %f)\t", F, G, D, brdf_r);
+
+        // 再帰・拡散
+        for (int i=0; i<12; i++) {
+            auto [v_rr, v_d] = p[i].eval(si, m_alpha_u_surface, m_alpha_v_surface, m_alpha_u_internal, m_alpha_v_internal, m_type, active, m_sample_visible);
+            brdf_rr += v_rr;
+            brdf_d += v_d;
+        }
+        brdf_rr *= cos_theta_o;
+        brdf_d *= diffuseFactor * cos_theta_o;
+
+        brdf_r *= m_surface_reflectance;
+        brdf_rr *= m_surface_reflectance*m_surface_reflectance;
+        brdf_rr *= m_internal_reflectance*m_internal_reflectance*m_internal_reflectance;
+
+        // 足して返す
+        value = select(active, brdf_d + brdf_rr + brdf_r, value);
+        // printf("(%f, %f, %f)\n", brdf_r, brdf_rr, brdf_d);
+        // Mask invalid = !isfinite(brdf_d) || !isfinite(brdf_rr) || !isfinite(brdf_d);
+        // if (any_or<true>(invalid)) { printf("invalid:(%f, %f, %f)\t", brdf_d, brdf_rr, brdf_r);}
+        return (active, value, 0.f);
     }
 
-    Float pdf(const BSDFContext & /*ctx*/, const SurfaceInteraction3f & /*si*/,
-              const Vector3f & /*wo*/, Mask /*active*/) const override {
-        return 0.f;
-    }
+    Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
+              const Vector3f &wo, Mask active) const override {
+        MTS_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+        // return 1.f;
+        // activeチェック
+        bool has_reflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 0);
+        bool has_retroreflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
+        has_retroreflection &= ctx.is_enabled(BSDFFlags::GlossyTransmission, 1);
+        bool has_diffusereflection = ctx.is_enabled(BSDFFlags::DiffuseReflection, 2);
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        Float cos_theta_o = Frame3f::cos_theta(wo);
+        active &= (cos_theta_i>0.f) && (cos_theta_o>0.f);
+        
+        if (unlikely(none_or<false>(active)))
+            return 0.f;
+        // Distributions, Walter's Trick
+        MicrofacetDistribution distr_surface(   m_type,
+                                                m_alpha_u_surface->eval_1(si, active),
+                                                m_alpha_v_surface->eval_1(si, active),
+                                                m_sample_visible);
+        // Walter's trick
+        if (unlikely(!m_sample_visible))
+            distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(Frame3f::cos_theta(si.wi))));
+        
+        Float prob_r  = 0.f;
+        Float prob_rr = 0.f;
+        Float prob_d  = 0.f;
+        // 表面
+        Vector3f m = normalize(si.wi + wo);
+        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dot(si.wi, m), Float(m_eta))) * 0.25f *rcp(abs_dot(si.wi, m));
 
-    Spectrum eval_null_transmission(const SurfaceInteraction3f & /*si*/,
-                                    Mask /*active*/) const override {
-        /* As above, we do not want the polarization state to change. So it is
-           safe to return a scalar (which will broadcast to the identity
-           matrix). */
-        return 1.f;
+        // 再帰・拡散
+        // Complex refractive index
+        Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
+                                                m_k_base->eval(si, active));
+        Path p[12] = {
+            Path(n, m_pa, m_qa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pa, m_ra, m_qa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qa, m_pa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qa, m_ra, m_pa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_ra, m_pa, m_qa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_ra, m_qa, m_pa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pb, m_qb, m_rb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pb, m_rb, m_qb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qb, m_pb, m_rb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qb, m_rb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_rb, m_pb, m_qb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_rb, m_qb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+        };
+        for (int i=0; i<12; i++) {
+            auto [v_rr, v_d] = p[i].pdf(si, m_alpha_u_surface, m_alpha_v_surface, m_alpha_u_internal, m_alpha_v_internal, m_type, active, m_sample_visible);
+            prob_rr += v_rr;
+            prob_d += v_d;
+        }
+        // prob_d *= diffuseFactor * warp::square_to_cosine_hemisphere_pdf(wo);
+        prob_d *= diffuseFactor;
+        Mask invalid = !isfinite(prob_r) || !isfinite(prob_rr) || !isfinite(prob_d);
+        // if (any_or<true>(invalid)) { printf("invalid:[%f, %f, %f]\t", prob_d, prob_rr, prob_r);}
+        // 足して返す
+        // printf("[%f, %f, %f]\n", prob_r, prob_rr, prob_d);       
+        return select(active && !invalid, prob_r + prob_rr + prob_d, 0.f);
+
     }
 
     std::string to_string() const override {
