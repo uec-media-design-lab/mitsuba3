@@ -76,12 +76,12 @@ transmitting material that absorbs 50% of the incident illumination.
 
 */
 template <typename Float, typename Spectrum>
-class LinearPolarizer final : public BSDF<Float, Spectrum> {
+class ReflectiveLinearPolarizer final : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture)
 
-    LinearPolarizer(const Properties &props) : Base(props) {
+    ReflectiveLinearPolarizer(const Properties &props) : Base(props) {
         m_theta = props.texture<Texture>("theta", 0.f);
         m_reflectance = props.texture<Texture>("reflectance", 1.f);
         m_transmittance = props.texture<Texture>("transmittance", 1.f);
@@ -104,7 +104,7 @@ public:
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
-        Mask selected_r = sample <= 0.5f;
+        Mask selected_r = sample1 <= 0.5f;
         bs.wo = dr::select(selected_r, reflect(si.wi), -si.wi);
         bs.pdf = 0.5f;
         bs.eta = 1.f;
@@ -210,7 +210,7 @@ public:
 
     std::string to_string() const override {
         std::ostringstream oss;
-        oss << "LinearPolarizer[" << std::endl
+        oss << "ReflectiveLinearPolarizer[" << std::endl
             << "  theta = " << string::indent(m_theta) << std::endl
             << "  reflectance = " << string::indent(m_reflectance) << std::endl
             << "  transmittance = " << string::indent(m_transmittance) << std::endl
@@ -227,6 +227,6 @@ private:
     ref<Texture> m_transmittance;
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(LinearPolarizer, BSDF)
-MI_EXPORT_PLUGIN(LinearPolarizer, "Linear polarizer material")
+MI_IMPLEMENT_CLASS_VARIANT(ReflectiveLinearPolarizer, BSDF)
+MI_EXPORT_PLUGIN(ReflectiveLinearPolarizer, "Reflective Linear polarizer material")
 NAMESPACE_END(mitsuba)
