@@ -270,9 +270,9 @@ public:
     class Path {
         // 
         public:
-            // MTS_IMPORT_BASE(BSDF, m_flags, m_components)
-            // MTS_IMPORT_TYPES(Texture, MicrofacetDistribution)
-            MTS_IMPORT_TYPES()
+            // MI_IMPORT_BASE(BSDF, m_flags, m_components)
+            // MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
+            MI_IMPORT_TYPES()
             Path(Normal3f n, Normal3f n1, Normal3f n2, Normal3f n3, Vector3f wi, Vector3f wo, ScalarFloat eta_air, ScalarFloat eta_mat, ref<Texture> base_eta, ref<Texture> base_k) {
                 this->n = n;
                 this->ni = n;
@@ -539,7 +539,7 @@ public:
                                              Float sample1,
                                              const Point2f &sample2,
                                              Mask active) const override {
-        MTS_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
+        MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
         bool has_reflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 0);
         bool has_retroreflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
         has_retroreflection &= ctx.is_enabled(BSDFFlags::GlossyTransmission, 1);
@@ -790,7 +790,7 @@ public:
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
                   const Vector3f &wo, Mask active) const override {
-        MTS_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
         MicrofacetDistribution distr_surface(m_type,
                                              m_alpha_u_surface->eval_1(si, active),
                                              m_alpha_v_surface->eval_1(si, active),
@@ -860,7 +860,7 @@ public:
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
               const Vector3f &wo, Mask active) const override {
-        MTS_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
         // return 1.f;
         // activeチェック
         bool has_reflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 0);
