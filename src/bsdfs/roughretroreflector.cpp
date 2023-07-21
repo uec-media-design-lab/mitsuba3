@@ -36,12 +36,12 @@ public:
     MI_IMPORT_TYPES(Texture)
 
     RoughRetroreflector(const Properties &props) : Base(props) {
-        m_pa = Normal3f(2*math::InvSqrtSix<Float>, 0, math::InvSqrtThree<Float>);                         // →
-        m_qa = Normal3f(-math::InvSqrtSix<Float>, math::InvSqrtTwo<Float>, math::InvSqrtThree<Float>);    // ↖
-        m_ra = Normal3f(-math::InvSqrtSix<Float>, -math::InvSqrtTwo<Float>, math::InvSqrtThree<Float>);   // ↙
-        m_pb = Normal3f(-2*math::InvSqrtSix<Float>, 0, math::InvSqrtThree<Float>);                       // ←
-        m_qb = Normal3f(math::InvSqrtSix<Float>, math::InvSqrtTwo<Float>, math::InvSqrtThree<Float>);    // ↗
-        m_rb = Normal3f(math::InvSqrtSix<Float>, -math::InvSqrtTwo<Float>, math::InvSqrtThree<Float>);   // ↘
+        m_pa = Normal3f(2*dr::InvSqrtSix<Float>, 0, dr::InvSqrtThree<Float>);                         // →
+        m_qa = Normal3f(-dr::InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);    // ↖
+        m_ra = Normal3f(-dr::InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);   // ↙
+        m_pb = Normal3f(-2*dr::InvSqrtSix<Float>, 0, dr::InvSqrtThree<Float>);                       // ←
+        m_qb = Normal3f(dr::InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);    // ↗
+        m_rb = Normal3f(dr::InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);   // ↘
 
         // # iors
         ScalarFloat int_ior = lookup_ior(props, "int_ior", "bk7");
@@ -125,7 +125,7 @@ public:
         } else {
             F_d = -9.23372 + 22.2272*m_eta - 20.9292*m_eta*m_eta + 10.2291*m_eta*m_eta*m_eta - 2.54396*m_eta*m_eta*m_eta*m_eta + 0.254913*m_eta*m_eta*m_eta*m_eta*m_eta;
         }
-        diffuseFactor = math::InvPi<Float> * sqr(m_inv_eta) / (1.f - F_d);
+        diffuseFactor = dr::InvPi<Float> * sqr(m_inv_eta) / (1.f - F_d);
         
         // surface normal(ideal)
         n = Normal3f(0.f, 0.f, 1.f);
