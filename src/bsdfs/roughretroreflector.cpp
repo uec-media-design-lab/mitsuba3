@@ -5,6 +5,8 @@
 #include <mitsuba/render/ior.h>
 #include <mitsuba/render/fresnel.h>
 #include <mitsuba/render/texture.h>
+#include <mitsuba/render/microfacet.h>
+#include <mitsuba/render/sampler.h>
 
 
 NAMESPACE_BEGIN(mitsuba)
@@ -271,8 +273,9 @@ public:
         // 
         public:
             // MI_IMPORT_BASE(BSDF, m_flags, m_components)
+            // MI_IMPORT_BASE(m_components)
             // MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
-            MI_IMPORT_TYPES()
+            // MI_IMPORT_TYPES(MicrofacetType)
             Path(Normal3f n, Normal3f n1, Normal3f n2, Normal3f n3, Vector3f wi, Vector3f wo, ScalarFloat eta_air, ScalarFloat eta_mat, ref<Texture> base_eta, ref<Texture> base_k) {
                 this->n = n;
                 this->ni = n;
