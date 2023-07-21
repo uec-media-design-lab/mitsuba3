@@ -33,7 +33,7 @@ template <typename Float, typename Spectrum>
 class RoughRetroreflector final : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
-    MI_IMPORT_TYPES(Texture)
+    MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
 
     RoughRetroreflector(const Properties &props) : Base(props) {
         m_pa = Normal3f(2*dr::InvSqrtSix<Float>, 0, dr::InvSqrtThree<Float>);                         // →
@@ -116,7 +116,7 @@ public:
         m_flags= m_components[0] | m_components[1] | m_components[2];
     
         // sample_visible
-        m_sample_visible = props.bool_("sample_visible", true);
+        m_sample_visible = props.get<bool>("sample_visible", true);
 
         // diffuseFactor
         Float F_d = 0.f;
@@ -125,41 +125,41 @@ public:
         } else {
             F_d = -9.23372 + 22.2272*m_eta - 20.9292*m_eta*m_eta + 10.2291*m_eta*m_eta*m_eta - 2.54396*m_eta*m_eta*m_eta*m_eta + 0.254913*m_eta*m_eta*m_eta*m_eta*m_eta;
         }
-        diffuseFactor = dr::InvPi<Float> * sqr(m_inv_eta) / (1.f - F_d);
+        diffuseFactor = dr::InvPi<Float> * dr::sqr(m_inv_eta) / (1.f - F_d);
         
         // surface normal(ideal)
         n = Normal3f(0.f, 0.f, 1.f);
 
         // reflectance
-        m_surface_reflectance   = props.float_("surface_reflectance", 1.f);
+        m_surface_reflectance   = props.texture<Texture>("surface_reflectance", 1.f);
     
-        m_internal_reflectance   = props.float_("internal_reflectance", 1.f);
+        m_internal_reflectance   = props.texture<Texture>("internal_reflectance", 1.f);
     }
 
     void traverse(TraversalCallback *callback) override {
         if (!has_flag(m_flags, BSDFFlags::Anisotropic))
-            callback->put_object("alpha", m_alpha_u_surface.get());
+            callback->put_object("alpha", m_alpha_u_surface.get(),                  ParamFlags::Differentiable | ParamFlags::Discontinuous);
         else {
-            callback->put_object("alpha_u_surface", m_alpha_u_surface.get());
-            callback->put_object("alpha_v_surface", m_alpha_v_surface.get());
-            callback->put_object("alpha_u_internal", m_alpha_u_internal.get());
-            callback->put_object("alpha_v_internal", m_alpha_v_internal.get());
+            callback->put_object("alpha_u_surface", m_alpha_u_surface.get(),        ParamFlags::Differentiable | ParamFlags::Discontinuous);
+            callback->put_object("alpha_v_surface", m_alpha_v_surface.get(),        ParamFlags::Differentiable | ParamFlags::Discontinuous);
+            callback->put_object("alpha_u_internal", m_alpha_u_internal.get(),      ParamFlags::Differentiable | ParamFlags::Discontinuous);
+            callback->put_object("alpha_v_internal", m_alpha_v_internal.get(),      ParamFlags::Differentiable | ParamFlags::Discontinuous);
         }
-        callback->put_parameter("eta", m_eta);
+        callback->put_parameter("eta", m_eta, ParamFlags::Differentiable | ParamFlags::Discontinuous);
         if (m_surface_reflectance)
-            callback->put_object("surface_reflectance", m_surface_reflectance.get());
+            callback->put_object("surface_reflectance", m_surface_reflectance.get(),   +ParamFlags::Differentiable);
         if (m_internal_reflectance)
-            callback->put_object("internal_reflectance", m_internal_reflectance.get());
+            callback->put_object("internal_reflectance", m_internal_reflectance.get(), +ParamFlags::Differentiable);
     }
 
     
     // print vector(or normal)(s)
-    void printV(const Vector3f v) const {
-        printf("(%f, %f, %f)\t", v.x(), v.y(), v.z());
-    }
-    void printN(const Normal3f n) const {
-        printf("<%f, %f, %f>\t", n.x(), n.y(), n.z());
-    }
+    // void printV(const Vector3f v) const {
+    //     printf("(%f, %f, %f)\t", v.x(), v.y(), v.z());
+    // }
+    // void printN(const Normal3f n) const {
+    //     printf("<%f, %f, %f>\t", n.x(), n.y(), n.z());
+    // }
 
     // random numbers
     mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
@@ -210,41 +210,41 @@ public:
         Point2f r2 = rand2(rng);
 
         // 1st surface
-        Float inner_a = clamp(dot(-wi, a), 0.f, 1.f);
-        Float inner_b = clamp(dot(-wi, b), 0.f, 1.f);
-        Float inner_c = clamp(dot(-wi, c), 0.f, 1.f);
+        Float inner_a = dr::clamp(dot(-wi, a), 0.f, 1.f);
+        Float inner_b = dr::clamp(dot(-wi, b), 0.f, 1.f);
+        Float inner_c = dr::clamp(dot(-wi, c), 0.f, 1.f);
         Float invDenominator = 1.f / (inner_a + inner_b + inner_c);
-        n1 =    select(Mask(r2.x() <= inner_a*invDenominator), a,
-                select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), b, c));
-        prob =  select(Mask(r2.x() <= inner_a*invDenominator), inner_a,
-                select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), inner_b, inner_c)) * invDenominator * 0.5f;
+        n1 =    dr::select(Mask(r2.x() <= inner_a*invDenominator), a,
+                dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), b, c));
+        prob =  dr::select(Mask(r2.x() <= inner_a*invDenominator), inner_a,
+                dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), inner_b, inner_c)) * invDenominator * 0.5f;
 
         // 2nd, 3rd surfaces
-        nt1 =   select(Mask(r2.x() <= inner_a*invDenominator), b, 
-                select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), a, a));
-        nt2 =   select(Mask(r2.x() <= inner_a*invDenominator), c, 
-                select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), c, b));
+        nt1 =   dr::select(Mask(r2.x() <= inner_a*invDenominator), b, 
+                dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), a, a));
+        nt2 =   dr::select(Mask(r2.x() <= inner_a*invDenominator), c, 
+                dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), c, b));
         vt = reflect(-wi, n1);
-        Float inner_nt1 = clamp(dot(-vt, nt1), 0.f, 1.f);
-        Float inner_nt2 = clamp(dot(-vt, nt2), 0.f, 1.f);
+        Float inner_nt1 = dr::clamp(dot(-vt, nt1), 0.f, 1.f);
+        Float inner_nt2 = dr::clamp(dot(-vt, nt2), 0.f, 1.f);
         invDenominator = 1.f / (inner_nt1 + inner_nt2);
 
-        n2 =            select(Mask(r2.y() <= inner_nt1*invDenominator), nt1, nt2);
-        n3 =            select(Mask(r2.y() <= inner_nt1*invDenominator), nt2, nt1);
-        prob = prob *   select(Mask(r2.y() <= inner_nt1*invDenominator), inner_nt1, inner_nt2) * invDenominator;
+        n2 =            dr::select(Mask(r2.y() <= inner_nt1*invDenominator), nt1, nt2);
+        n3 =            dr::select(Mask(r2.y() <= inner_nt1*invDenominator), nt2, nt1);
+        prob = prob *   dr::select(Mask(r2.y() <= inner_nt1*invDenominator), inner_nt1, inner_nt2) * invDenominator;
 
         return std::forward_as_tuple(n1, n2, n3, prob);
     }
 
     // ERA
     Float ERA(const Float cos_theta_i, const Float sin_phi_i, const Float cos_phi_i) const {
-        Float x = rad_to_deg(acos(abs(cos_theta_i)));
-        Float x_phi = mulsign(rad_to_deg(acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
+        Float x = dr::rad_to_deg(acos(abs(cos_theta_i)));
+        Float x_phi = dr::mulsign(dr::rad_to_deg(acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
         Float x_phi_blend = abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
         Float val_upper = ERA_upperBoundary(x);
         Float val_lower = ERA_lowerBoundary(x);
-        // printf("phi:%f\tphi:%f\tphimod:%f\tphimodabs30:%f\tblend:%f\n",rad_to_deg(acos(cos_phi_i)), x_phi, fmod(x_phi, 60.f), abs(fmod(x_phi, 60.f) - 30.f), x_phi_blend);
-        // printf("cos:%f\tsin:%f\tphi:%f\tphi':%f\tphi-blend:%f\n", cos_phi_i, sin_phi_i, x_phi, rad_to_deg(acos(cos_phi_i)), x_phi_blend);
+        // printf("phi:%f\tphi:%f\tphimod:%f\tphimodabs30:%f\tblend:%f\n",dr::rad_to_deg(acos(cos_phi_i)), x_phi, fmod(x_phi, 60.f), abs(fmod(x_phi, 60.f) - 30.f), x_phi_blend);
+        // printf("cos:%f\tsin:%f\tphi:%f\tphi':%f\tphi-blend:%f\n", cos_phi_i, sin_phi_i, x_phi, dr::rad_to_deg(acos(cos_phi_i)), x_phi_blend);
         // printf("theta:%f\tphi':%f\tval:%f\n", x, x_phi_blend, x_phi_blend*val_upper + (1.f-x_phi_blend)*val_lower);
         return x_phi_blend*val_upper + (1.f-x_phi_blend)*val_lower;
     }
@@ -256,7 +256,7 @@ public:
         Float d = 0.084810;
         Float val = a*atan(b*x +c)+d;
         // printf("x:%f, val:%f\n", x, val);
-        return select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
+        return dr::select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
     }
     Float ERA_upperBoundary(const Float x) const {
         Float a = -0.353394;
@@ -265,7 +265,7 @@ public:
         Float d = 0.322462;
         Float val = a*atan(b*x +c)+d;
         // printf("x:%f, val:%f\n", x, val);
-        return select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
+        return dr::select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
     }
 
     // class
@@ -274,7 +274,7 @@ public:
         public:
             // MI_IMPORT_BASE(BSDF, m_flags, m_components)
             // MI_IMPORT_BASE(m_components)
-            // MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
+            MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
             // MI_IMPORT_TYPES(MicrofacetType)
             Path(Normal3f n, Normal3f n1, Normal3f n2, Normal3f n3, Vector3f wi, Vector3f wo, ScalarFloat eta_air, ScalarFloat eta_mat, ref<Texture> base_eta, ref<Texture> base_k) {
                 this->n = n;
@@ -355,15 +355,15 @@ public:
                 Mask valid = true;
 
                 // 1st surface
-                Float inner_1st_n1 = clamp(dot(-muv1, m1), 0.f, 1.f);
-                Float inner_1st_n2 = clamp(dot(-muv1, m2), 0.f, 1.f);
-                Float inner_1st_n3 = clamp(dot(-muv1, m3), 0.f, 1.f);
+                Float inner_1st_n1 = dr::clamp(dot(-muv1, m1), 0.f, 1.f);
+                Float inner_1st_n2 = dr::clamp(dot(-muv1, m2), 0.f, 1.f);
+                Float inner_1st_n3 = dr::clamp(dot(-muv1, m3), 0.f, 1.f);
                 Float invDenominator1st = 1.f / (inner_1st_n1 + inner_1st_n2 + inner_1st_n3);
 
                 prob = prob * inner_1st_n1*invDenominator1st;
 
-                Float inner_2nd_n2 = clamp(dot(-muv2, m2), 0.f, 1.f);
-                Float inner_2nd_n3 = clamp(dot(-muv2, m3), 0.f, 1.f);
+                Float inner_2nd_n2 = dr::clamp(dot(-muv2, m2), 0.f, 1.f);
+                Float inner_2nd_n3 = dr::clamp(dot(-muv2, m3), 0.f, 1.f);
                 Float invDenominator2nd = 1.f / (inner_2nd_n2 + inner_2nd_n3);
                 
                 prob = prob * inner_2nd_n2*invDenominator2nd;
@@ -371,13 +371,13 @@ public:
                 valid = Mask(inner_1st_n1 + inner_1st_n2 + inner_1st_n3 > 0.f)&& valid;
                 valid = Mask(inner_2nd_n2 + inner_2nd_n3>0.f)&& valid;
                 valid = Mask(isfinite(prob)) && valid;
-                return select(valid, prob, 0.f);
+                return dr::select(valid, prob, 0.f);
             }
 
             // class - ERA
             Float ERA(const Float cos_theta_i, const Float sin_phi_i, const Float cos_phi_i) const {
-            Float x = rad_to_deg(acos(abs(cos_theta_i)));
-            Float x_phi = mulsign(rad_to_deg(acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
+            Float x = dr::rad_to_deg(acos(abs(cos_theta_i)));
+            Float x_phi = dr::mulsign(dr::rad_to_deg(acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
             Float x_phi_blend = abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
             Float val_upper = ERA_upperBoundary(x);
             Float val_lower = ERA_lowerBoundary(x);
@@ -391,7 +391,7 @@ public:
             Float d = 0.084810;
             Float val = a*atan(b*x +c)+d;
             // printf("x:%f, val:%f\n", x, val);
-            return select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
+            return dr::select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
         }
         Float ERA_upperBoundary(const Float x) const {
             Float a = -0.353394;
@@ -400,7 +400,7 @@ public:
             Float d = 0.322462;
             Float val = a*atan(b*x +c)+d;
             // printf("x:%f, val:%f\n", x, val);
-            return select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
+            return dr::select(Mask(val>=0), val, 0.f);  // Max(val, 0.f)
         }
 
         std::tuple<Spectrum, Spectrum> eval(const SurfaceInteraction3f &si, ref<Texture> alpha_surface_u, ref<Texture> alpha_surface_v, ref<Texture> alpha_internal_u, ref<Texture> alpha_internal_v, MicrofacetType mType, Mask active, bool sample_visible) const {
@@ -424,7 +424,7 @@ public:
             Float Do = distr_surface.eval(mo);
 
             // F
-            Complex<UnpolarizedSpectrum> base_eta_k(eta_base->eval(si, active),
+            dr::Complex<UnpolarizedSpectrum> base_eta_k(eta_base->eval(si, active),
                                                     k_base->eval(si, active));
             Float Fi = std::get<0>(fresnel(dot(-mui, mi), Float(reta)));
             auto F1 = fresnel_conductor(UnpolarizedSpectrum(dot(-muv1, m1)), base_eta_k);
@@ -434,11 +434,11 @@ public:
             // incorrect Path check
             // printf("(%f:  %f, %f, %f, %f, %f)\n", pathProb, Fi, F1, F2, F3, Fo);
             Mask incorrectRRpath = !isfinite(Fo);
-            Fi = select(incorrectRRpath, 0.f, Fi);
-            F1 = select(incorrectRRpath, 0.f, F1);
-            F2 = select(incorrectRRpath, 0.f, F2);
-            F3 = select(incorrectRRpath, 0.f, F3);
-            Fo = select(incorrectRRpath, 0.f, Fo);
+            Fi = dr::select(incorrectRRpath, 0.f, Fi);
+            F1 = dr::select(incorrectRRpath, 0.f, F1);
+            F2 = dr::select(incorrectRRpath, 0.f, F2);
+            F3 = dr::select(incorrectRRpath, 0.f, F3);
+            Fo = dr::select(incorrectRRpath, 0.f, Fo);
 
             // G
             Float Gi = distr_surface.G(-mui, muv1, mi);
@@ -448,11 +448,11 @@ public:
             Float Go = distr_surface.G(-muv4, muo, mo);
 
             // J
-            Float Ji = abs(ea*ea*dot(mui, mi))*abs(dot(muv1, mi)) / (abs(dot(mui, ni))*abs(dot(muv1, ni)) * sqr(ea*dot(-mui,mi) + em*dot(muv1,mi)));
+            Float Ji = abs(ea*ea*dot(mui, mi))*abs(dot(muv1, mi)) / (abs(dot(mui, ni))*abs(dot(muv1, ni)) * dr::sqr(ea*dot(-mui,mi) + em*dot(muv1,mi)));
             Float J1 = 0.25f / (abs(dot(muv1,n1)*dot(muv2,n1)));
             Float J2 = 0.25f / (abs(dot(muv2,n2)*dot(muv3,n2)));
             Float J3 = 0.25f / (abs(dot(muv3,n3)*dot(muv4,n3)));
-            Float Jo = abs(em*em*dot(muv4, mo))*abs(dot(muo, mo)) / (abs(dot(muv4, no))*abs(dot(muo, no)) * sqr(em*dot(-muv4,mo) + ea*dot(muo,mo)));
+            Float Jo = abs(em*em*dot(muv4, mo))*abs(dot(muo, mo)) / (abs(dot(muv4, no))*abs(dot(muo, no)) * dr::sqr(em*dot(-muv4,mo) + ea*dot(muo,mo)));
 
             // ERA
             Float era_cos_i = Frame3f::cos_theta(-muv1);
@@ -461,12 +461,12 @@ public:
 
             // RetroReflection
             // val_rr = pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * pow(Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo, 0.2);
-            val_rr = select(!incorrectRRpath, 0.f, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era);
+            val_rr = dr::select(!incorrectRRpath, 0.f, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era);
             // printf("[P:%f, F:%f, G:%f, D:%f, J:%f]\n", pathProb, (1.f-Fi)*F1*F2*F3*(1.f-Fo), Gi*G1*G2*G3*Go, pow(Di*D1*D2*D3*Do, 0.2), Ji*J1*J2*J3*Jo);
 
             // Diffuse
             // diffuseFactorを除いた部分
-            val_d = select(isfinite(pathProb), (1.f-Fi)* (era * pathProb * (1.f-F1*F2*F3*(1.f-Fo)) + (1.f-era)), 0.f);
+            val_d = dr::select(isfinite(pathProb), (1.f-Fi)* (era * pathProb * (1.f-F1*F2*F3*(1.f-Fo)) + (1.f-era)), 0.f);
             return std::forward_as_tuple(val_rr, val_d);
         }
         std::tuple<Float, Float> pdf(const SurfaceInteraction3f &si, ref<Texture> alpha_surface_u, ref<Texture> alpha_surface_v, ref<Texture> alpha_internal_u, ref<Texture> alpha_internal_v, MicrofacetType mType, Mask active, bool sample_visible) const {
@@ -489,7 +489,7 @@ public:
             Float Do = distr_surface.pdf(abs(dot(muv4, no)), mo);
 
             // F
-            Complex<UnpolarizedSpectrum> base_eta_k(eta_base->eval(si, active),
+            dr::Complex<UnpolarizedSpectrum> base_eta_k(eta_base->eval(si, active),
                                                     k_base->eval(si, active));
             Float Fi = std::get<0>(fresnel(dot(-mui, mi), Float(reta)));
             Float F1 = 1.f;
@@ -498,17 +498,17 @@ public:
             Float Fo = std::get<0>(fresnel(dot(muo, mo), Float(reta)));
             // incorrect Path check
             Mask incorrectRRpath = !isfinite(Fo);
-            F1 = select(incorrectRRpath, 0.f, F1);
-            F2 = select(incorrectRRpath, 0.f, F2);
-            F3 = select(incorrectRRpath, 0.f, F3);
-            Fo = select(incorrectRRpath, 0.f, Fo);
+            F1 = dr::select(incorrectRRpath, 0.f, F1);
+            F2 = dr::select(incorrectRRpath, 0.f, F2);
+            F3 = dr::select(incorrectRRpath, 0.f, F3);
+            Fo = dr::select(incorrectRRpath, 0.f, Fo);
 
             // J
-            Float Ji = em*em*abs(dot(muv1, mi)) / sqr(ea*dot(-mui,mi) + em*dot(muv1,mi));
+            Float Ji = em*em*abs(dot(muv1, mi)) / dr::sqr(ea*dot(-mui,mi) + em*dot(muv1,mi));
             Float J1 = 0.25f / abs(dot(muv2,n1));
             Float J2 = 0.25f / abs(dot(muv3,n2));
             Float J3 = 0.25f / abs(dot(muv4,n3));
-            Float Jo = ea*ea*abs(dot(muo, mo)) / sqr(em*dot(-muv4,mo) + ea*dot(muo,mo));
+            Float Jo = ea*ea*abs(dot(muo, mo)) / dr::sqr(em*dot(-muv4,mo) + ea*dot(muo,mo));
 
             // ERA
             Float era_cos_i = Frame3f::cos_theta(-muv1);
@@ -516,7 +516,7 @@ public:
             Float era = ERA(era_cos_i, era_sin_phi, era_cos_phi);
 
             // RetroReflection
-            prob_rr = select(!incorrectRRpath, 0.f, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era);
+            prob_rr = dr::select(!incorrectRRpath, 0.f, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era);
 
             // Diffuse
             // diffuseFactorを除いた部分
@@ -555,7 +555,7 @@ public:
         Float r1 = 0.f;                 // 汎用乱数(1D)
         Point2f r2 = Point2f(0.f, 0.f); // 汎用乱数(2D)
 
-        BSDFSample3f bs = zero<BSDFSample3f>();
+        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
         Spectrum weight = 0.f;
 
         auto rng = setRandomGenerator(sample1*1000000);
@@ -565,7 +565,7 @@ public:
         MicrofacetDistribution sample_distr_internal(distr_internal);
         
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        active &= neq(cos_theta_i, 0.f);
+        active &= cos_theta_i != 0.f;
         
         if (unlikely(!m_sample_visible)) {  // Walter's trick
             sample_distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(cos_theta_i)));
@@ -573,7 +573,7 @@ public:
         }
 
         // 最初の表面
-        auto [mi, Di] = sample_distr_surface.sample(mulsign(si.wi, cos_theta_i), sample2);
+        auto [mi, Di] = sample_distr_surface.sample(dr::mulsign(si.wi, cos_theta_i), sample2);
         auto [r_i, cos_theta_v1, eta_i_v1, eta_v1_i] = fresnel(dot(si.wi, mi), Float(m_eta));
         Float Fi = r_i;
         Vector3f wv1 = refract(si.wi, mi, cos_theta_v1, eta_v1_i);
@@ -601,19 +601,19 @@ public:
         Vector3f wv2, wv3, wv4;
 
         // Complex refractive index
-        Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
+        dr::Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
                                                 m_k_base->eval(si, active));
-        if(any_or<true>(selected_t)) {
+        if(dr::any_or<true>(selected_t)) {
             // ベース法線決定
             auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, rng);
             auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, rng);
             r1 = rand(rng);
             Mask elemA = (r1 <= 0.5f) && active;
             Mask elemB = (r1 >  0.5f) && active;
-            n1 = select(elemA, a1, b1);
-            n2 = select(elemA, a2, b2);
-            n3 = select(elemA, a3, b3);
-            pathProb = select(elemA, pa, pb);
+            n1 = dr::select(elemA, a1, b1);
+            n2 = dr::select(elemA, a2, b2);
+            n3 = dr::select(elemA, a3, b3);
+            pathProb = dr::select(elemA, pa, pb);
 
             // n1反射
             r2 = rand2(rng);
@@ -655,10 +655,10 @@ public:
         }
         // incorrectPath: 経路決定後、次の面には裏面からしか入射しない場合
         Mask incorrectRRpath = !isfinite(Fo);
-        F1 = select(incorrectRRpath, 0.f, F1);
-        F2 = select(incorrectRRpath, 0.f, F2);
-        F3 = select(incorrectRRpath, 0.f, F3);
-        Fo = select(incorrectRRpath, 0.f, Fo);
+        F1 = dr::select(incorrectRRpath, 0.f, F1);
+        F2 = dr::select(incorrectRRpath, 0.f, F2);
+        F3 = dr::select(incorrectRRpath, 0.f, F3);
+        Fo = dr::select(incorrectRRpath, 0.f, Fo);
 
         r1 = rand(rng);
 
@@ -695,13 +695,13 @@ public:
 
         // それぞれの表面のBSDFSampleを作る
         // 表面
-        if (any_or<true>(selected_r)) {
+        if (dr::any_or<true>(selected_r)) {
             // printf("r");
             bs.wo[selected_r] = reflect(si.wi, mi);
-            bs.pdf = select(selected_r, Fi*Di*rcp(4*dot(si.wi,mi)), bs.pdf);
+            bs.pdf = dr::select(selected_r, Fi*Di*dr::rcp(4*dot(si.wi,mi)), bs.pdf);
             bs.eta = 1.f;
-            bs.sampled_type = select(selected_r, UInt32(+BSDFFlags::GlossyReflection), bs.sampled_type);
-            bs.sampled_component = select(selected_r, UInt32(0), bs.sampled_component);
+            bs.sampled_type = dr::select(selected_r, UInt32(+BSDFFlags::GlossyReflection), bs.sampled_type);
+            bs.sampled_component = dr::select(selected_r, UInt32(0), bs.sampled_component);
             UnpolarizedSpectrum weight_r = 0.f;
             if (likely(m_sample_visible)) {
                 weight_r = distr_surface.smith_g1(bs.wo, mi);
@@ -709,30 +709,30 @@ public:
                 weight_r = distr_surface.G(si.wi, bs.wo, mi) * dot(si.wi, mi) /
                         (cos_theta_i * Frame3f::cos_theta(mi));
             }
-            weight = select(selected_r, weight_r, weight);
-            weight[selected_r] *= m_surface_reflectance;
+            weight = dr::select(selected_r, weight_r, weight);
+            weight[selected_r] *= m_surface_reflectance->eval(si, selected_r);
         }
 
         // 再帰
-        if (any_or<true>(selected_rr)) {
+        if (dr::any_or<true>(selected_rr)) {
             // printf("R");
             // printV(si.wi);printV(wo_rr); printf("\n");
             bs.wo[selected_rr] = wo_rr;
-            bs.eta = select(selected_rr, 1.f, bs.eta);
-            bs.sampled_type = select(selected_rr, UInt32(+BSDFFlags::GlossyTransmission | +BSDFFlags::GlossyReflection), bs.sampled_type);
-            bs.sampled_component = select(selected_rr, UInt32(1), bs.sampled_component);
+            bs.eta = dr::select(selected_rr, 1.f, bs.eta);
+            bs.sampled_type = dr::select(selected_rr, UInt32(+BSDFFlags::GlossyTransmission | +BSDFFlags::GlossyReflection), bs.sampled_type);
+            bs.sampled_component = dr::select(selected_rr, UInt32(1), bs.sampled_component);
             Spectrum weight_rr = 0.f;
             // ヤコビアン(bs.pdf)
-            Float dwmi_dwi = sqr(m_eta_air)*abs(dot(si.wi, mi)) / sqr(m_eta_air*dot(si.wi, mi) + m_eta_mat*dot(wv1, mi));
-            Float dwm1_dwv1 = rcp(4.f * abs(dot(-wv1, m1)));
-            Float dwm2_dwv2 = rcp(4.f * abs(dot(-wv2, m2)));
-            Float dwm3_dwv3 = rcp(4.f * abs(dot(-wv3, m3)));
-            Float dwmo_dwv4 = sqr(m_eta_air)*abs(dot(wo_rr, mo)) / sqr(m_eta_mat*dot(-wv4, mo) + m_eta_air*dot(wo_rr, mo));
-            // bs.pdf = select(selected_rr, 1.f, bs.pdf);
-            bs.pdf = select(selected_rr, (1.f-Fi)*(1.f-Fo) * clamp(Di*D1*D2*D3*Do, 0.f, 1000000000000.f) * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb * era, bs.pdf);
-            // bs.pdf = select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) *  dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * Di*D1*D2*D3*Do * pathProb, bs.pdf);
-            // bs.pdf = select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb, bs.pdf);
-            // bs.pdf = select(selected_rr, 1.f* pathProb, bs.pdf);
+            Float dwmi_dwi = dr::sqr(m_eta_air)*abs(dot(si.wi, mi)) / dr::sqr(m_eta_air*dot(si.wi, mi) + m_eta_mat*dot(wv1, mi));
+            Float dwm1_dwv1 = dr::rcp(4.f * abs(dot(-wv1, m1)));
+            Float dwm2_dwv2 = dr::rcp(4.f * abs(dot(-wv2, m2)));
+            Float dwm3_dwv3 = dr::rcp(4.f * abs(dot(-wv3, m3)));
+            Float dwmo_dwv4 = dr::sqr(m_eta_air)*abs(dot(wo_rr, mo)) / dr::sqr(m_eta_mat*dot(-wv4, mo) + m_eta_air*dot(wo_rr, mo));
+            // bs.pdf = dr::select(selected_rr, 1.f, bs.pdf);
+            bs.pdf = dr::select(selected_rr, (1.f-Fi)*(1.f-Fo) * dr::clamp(Di*D1*D2*D3*Do, 0.f, 1000000000000.f) * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb * era, bs.pdf);
+            // bs.pdf = dr::select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) *  dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * Di*D1*D2*D3*Do * pathProb, bs.pdf);
+            // bs.pdf = dr::select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb, bs.pdf);
+            // bs.pdf = dr::select(selected_rr, 1.f* pathProb, bs.pdf);
             // printf("<F:%f, D:%f, J:%f, p:%f, pdf:%f>\n",  (1.f-Fi)*F1*F2*F3*(1.f-Fo), min(Di*D1*D2*D3*Do, 1000000000), dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4, pathProb, bs.pdf);
             // printV(si.wi);printV(wv1);printV(wv2);printV(wv3);printV(wv4);printV(wo_rr);
             // printf("<%f, %f, %f, %f, %f, -> %f>\n",  Di, D1, D2, D3, Do, Di*D1*D2*D3*Do);
@@ -755,9 +755,9 @@ public:
                             distr_internal.G(rotateVector(-wv3, n3, n), rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
                             distr_surface.G(-wv4, wo_rr, mo) *
                             abs(dot(si.wi,mi)*dot(wv1,m1)*dot(wv2,m2)*dot(wv3,m3)*dot(wv4,mo)) *
-                            rcp(cos_theta_i*cos_theta_v1 * dot(wv1,n1)*dot(wv2,n1) * dot(wv2,n2)*dot(wv3,n2) * dot(wv3,n3)*dot(wv4,n3) * dot(wv4,n)*cos_theta_o);
+                            dr::rcp(cos_theta_i*cos_theta_v1 * dot(wv1,n1)*dot(wv2,n1) * dot(wv2,n2)*dot(wv3,n2) * dot(wv3,n3)*dot(wv4,n3) * dot(wv4,n)*cos_theta_o);
             }
-            weight = select(selected_rr, weight_rr, weight);
+            weight = dr::select(selected_rr, weight_rr, weight);
             // printf("[%f, %f, %f, %f, %f -> %f], %f\n", distr_surface.smith_g1(wv1, mi),
             //                 distr_internal.smith_g1(rotateVector(wv2, n1, n), rotateNormal(m1, n1, n)),
             //                 distr_internal.smith_g1(rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)),
@@ -767,23 +767,23 @@ public:
             //                 distr_internal.smith_g1(rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)) *
             //                 distr_internal.smith_g1(rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
             //                 distr_surface.smith_g1(wo_rr, mo), weight_rr);
-            // weight = select(selected_rr, 1.f, weight);
-            weight[selected_rr] *= m_surface_reflectance*m_surface_reflectance;
-            weight[selected_rr] *= m_internal_reflectance*m_internal_reflectance*m_internal_reflectance;
+            // weight = dr::select(selected_rr, 1.f, weight);
+            weight[selected_rr] *= m_surface_reflectance->eval(si, selected_rr)*m_surface_reflectance->eval(si, selected_rr);
+            weight[selected_rr] *= m_internal_reflectance->eval(si, selected_rr)*m_internal_reflectance->eval(si, selected_rr)*m_internal_reflectance->eval(si, selected_rr);
             
         }
 
         // 拡散
-        if (any_or<true>(selected_d)) {
+        if (dr::any_or<true>(selected_d)) {
             // printf("D");
             r2 = rand2(rng);
             Vector3f wo_diffuse = warp::square_to_cosine_hemisphere(r2);
             bs.wo[selected_d] = wo_diffuse;
-            bs.pdf = select(selected_d, (1.f-Fi) * (era * Fo * pathProb + (1.f-era)) * warp::square_to_cosine_hemisphere_pdf(wo_diffuse), bs.pdf);
-            bs.eta = select(selected_d, 1.f, bs.eta);
-            bs.sampled_type = select(selected_d, UInt32(+BSDFFlags::DiffuseReflection), bs.sampled_type);
-            bs.sampled_component = select(selected_d, UInt32(2), bs.sampled_component);
-            weight = select(selected_d, 1.f, weight);
+            bs.pdf = dr::select(selected_d, (1.f-Fi) * (era * Fo * pathProb + (1.f-era)) * warp::square_to_cosine_hemisphere_pdf(wo_diffuse), bs.pdf);
+            bs.eta = dr::select(selected_d, 1.f, bs.eta);
+            bs.sampled_type = dr::select(selected_d, UInt32(+BSDFFlags::DiffuseReflection), bs.sampled_type);
+            bs.sampled_component = dr::select(selected_d, UInt32(2), bs.sampled_component);
+            weight = dr::select(selected_d, 1.f, weight);
         }
         // weight = 0.1f;
         // printf("<%f, %f>\n",(1.f-Fi)*F1*F2*F3*(1.f-Fo), (1.f-Fi)*(1.f-F1*F2*F3*(1.f-Fo)));
@@ -808,10 +808,10 @@ public:
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
         Float cos_theta_o = Frame3f::cos_theta(wo);
         active &= (cos_theta_i>0.f) && (cos_theta_o>0.f);
-        if (unlikely(none_or<false>(active)))
+        if (unlikely(dr::none_or<false>(active)))
             return 0.f;
         // Complex refractive index
-        Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
+        dr::Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
                                                 m_k_base->eval(si, active));
         // 12経路の内部相互作用の評価
         Path p[12] = {
@@ -829,7 +829,7 @@ public:
             Path(n, m_rb, m_qb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
         };
 
-        Float brdf_r  = 0.f;
+        Spectrum brdf_r  = 0.f;
         Spectrum brdf_rr = 0.f;
         Spectrum brdf_d  = 0.f;
         // 表面
@@ -837,7 +837,7 @@ public:
         Float F = std::get<0>(fresnel(dot(si.wi, m), Float(m_eta)));
         Float G = distr_surface.G(si.wi, wo, m);
         Float D = distr_surface.eval(m);
-        brdf_r = F*G*D* 0.25f*rcp(cos_theta_i); // cos_theta_o打ち消し
+        brdf_r = F*G*D* 0.25f*dr::rcp(cos_theta_i); // cos_theta_o打ち消し
         // printf("(%f, %f, %f, %f)\t", F, G, D, brdf_r);
 
         // 再帰・拡散
@@ -849,15 +849,15 @@ public:
         brdf_rr *= cos_theta_o;
         brdf_d *= diffuseFactor * cos_theta_o;
 
-        brdf_r *= m_surface_reflectance;
-        brdf_rr *= m_surface_reflectance*m_surface_reflectance;
-        brdf_rr *= m_internal_reflectance*m_internal_reflectance*m_internal_reflectance;
+        brdf_r *= m_surface_reflectance->eval(si, active);
+        brdf_rr *= m_surface_reflectance->eval(si, active)*m_surface_reflectance->eval(si, active);
+        brdf_rr *= m_internal_reflectance->eval(si, active)*m_internal_reflectance->eval(si, active)*m_internal_reflectance->eval(si, active);
 
         // 足して返す
-        value = select(active, brdf_d + brdf_rr + brdf_r, value);
+        value = dr::select(active, brdf_d + brdf_rr + brdf_r, value);
         // printf("(%f, %f, %f)\n", brdf_r, brdf_rr, brdf_d);
         // Mask invalid = !isfinite(brdf_d) || !isfinite(brdf_rr) || !isfinite(brdf_d);
-        // if (any_or<true>(invalid)) { printf("invalid:(%f, %f, %f)\t", brdf_d, brdf_rr, brdf_r);}
+        // if (dr::any_or<true>(invalid)) { printf("invalid:(%f, %f, %f)\t", brdf_d, brdf_rr, brdf_r);}
         return (active, value, 0.f);
     }
 
@@ -874,7 +874,7 @@ public:
         Float cos_theta_o = Frame3f::cos_theta(wo);
         active &= (cos_theta_i>0.f) && (cos_theta_o>0.f);
         
-        if (unlikely(none_or<false>(active)))
+        if (unlikely(dr::none_or<false>(active)))
             return 0.f;
         // Distributions, Walter's Trick
         MicrofacetDistribution distr_surface(   m_type,
@@ -890,11 +890,11 @@ public:
         Float prob_d  = 0.f;
         // 表面
         Vector3f m = normalize(si.wi + wo);
-        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dot(si.wi, m), Float(m_eta))) * 0.25f *rcp(abs_dot(si.wi, m));
+        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dot(si.wi, m), Float(m_eta))) * 0.25f *dr::rcp(abs_dot(si.wi, m));
 
         // 再帰・拡散
         // Complex refractive index
-        Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
+        dr::Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
                                                 m_k_base->eval(si, active));
         Path p[12] = {
             Path(n, m_pa, m_qa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
@@ -918,10 +918,10 @@ public:
         // prob_d *= diffuseFactor * warp::square_to_cosine_hemisphere_pdf(wo);
         prob_d *= diffuseFactor;
         Mask invalid = !isfinite(prob_r) || !isfinite(prob_rr) || !isfinite(prob_d);
-        // if (any_or<true>(invalid)) { printf("invalid:[%f, %f, %f]\t", prob_d, prob_rr, prob_r);}
+        // if (dr::any_or<true>(invalid)) { printf("invalid:[%f, %f, %f]\t", prob_d, prob_rr, prob_r);}
         // 足して返す
         // printf("[%f, %f, %f]\n", prob_r, prob_rr, prob_d);       
-        return select(active && !invalid, prob_r + prob_rr + prob_d, 0.f);
+        return dr::select(active && !invalid, prob_r + prob_rr + prob_d, 0.f);
 
     }
 
@@ -969,8 +969,8 @@ private:
     MicrofacetType m_type;
     bool m_sample_visible;
     Float diffuseFactor;
-    Float m_surface_reflectance;
-    Float m_internal_reflectance;
+    ref<Texture> m_surface_reflectance;
+    ref<Texture> m_internal_reflectance;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector, BSDF)
