@@ -925,6 +925,80 @@ public:
 
     }
 
+    std::pair<Spectrum, Float> eval_pdf(const BSDFContext &ctx,
+                                        const SurfaceInteraction3f &si,
+                                        const Vector3f &wo,
+                                        Mask active) const override {
+        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+        MicrofacetDistribution distr_surface(m_type,
+                                             m_alpha_u_surface->eval_1(si, active),
+                                             m_alpha_v_surface->eval_1(si, active),
+                                             m_sample_visible);
+        bool has_reflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 0);
+        bool has_retroreflection = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
+        has_retroreflection &= ctx.is_enabled(BSDFFlags::GlossyTransmission, 1);
+        bool has_diffusereflection = ctx.is_enabled(BSDFFlags::DiffuseReflection, 2);
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        Float cos_theta_o = Frame3f::cos_theta(wo);
+        active &= (cos_theta_i>0.f) && (cos_theta_o>0.f);
+        if (unlikely(dr::none_or<false>(active)))
+            return {0.f, 0.f};
+        
+        Spectrum brdf_r  = 0.f;
+        Spectrum brdf_rr = 0.f;
+        Spectrum brdf_d  = 0.f;
+        Float prob_r  = 0.f;
+        Float prob_rr = 0.f;
+        Float prob_d  = 0.f;
+        Vector3f m = normalize(si.wi + wo);
+
+        // surface
+        Float F = std::get<0>(fresnel(dot(si.wi, m), Float(m_eta)));
+        Float G = distr_surface.G(si.wi, wo, m);
+        Float D = distr_surface.eval(m);
+        brdf_r = F*G*D* 0.25f*dr::rcp(cos_theta_i); // cos_theta_o打ち消し
+        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dot(si.wi, m), Float(m_eta))) * 0.25f *dr::rcp(abs_dot(si.wi, m));
+
+        //retroreflect / diffuse
+        Path p[12] = {
+            Path(n, m_pa, m_qa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pa, m_ra, m_qa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qa, m_pa, m_ra, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qa, m_ra, m_pa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_ra, m_pa, m_qa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_ra, m_qa, m_pa, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pb, m_qb, m_rb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_pb, m_rb, m_qb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qb, m_pb, m_rb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_qb, m_rb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_rb, m_pb, m_qb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+            Path(n, m_rb, m_qb, m_pb, si.wi, wo, m_eta_air, m_eta_mat, m_eta_base, m_k_base),
+        };
+        for (int i=0; i<12; i++) {
+            auto [v_rr_brdf, v_d_brdf] = p[i].eval(si, m_alpha_u_surface, m_alpha_v_surface, m_alpha_u_internal, m_alpha_v_internal, m_type, active, m_sample_visible);
+            auto [v_rr_prob, v_d_prob] = p[i].pdf( si, m_alpha_u_surface, m_alpha_v_surface, m_alpha_u_internal, m_alpha_v_internal, m_type, active, m_sample_visible);
+            brdf_rr += v_rr_brdf;
+            brdf_d += v_d_brdf;
+            prob_rr += v_rr_prob;
+            prob_d += v_d_prob;
+        }
+
+        brdf_rr *= cos_theta_o;
+        brdf_d *= diffuseFactor * cos_theta_o;
+        prob_d *= diffuseFactor;
+
+        brdf_r *= m_surface_reflectance->eval(si, active);
+        brdf_rr *= m_surface_reflectance->eval(si, active)*m_surface_reflectance->eval(si, active);
+        brdf_rr *= m_internal_reflectance->eval(si, active)*m_internal_reflectance->eval(si, active)*m_internal_reflectance->eval(si, active);
+        Mask invalid = !isfinite(prob_r) || !isfinite(prob_rr) || !isfinite(prob_d);
+
+        auto brdf = dr::select(active, brdf_d + brdf_rr + brdf_r, 0.f);
+        auto prob = dr::select(active && invalid, prob_r + prob_rr + prob_d, 0.f);
+
+        return {brdf, prob};
+
+    }
+
     std::string to_string() const override {
         std::ostringstream oss;
         oss << "RoughRetroeflector[" << std::endl
