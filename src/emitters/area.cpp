@@ -68,6 +68,7 @@ public:
                   "shape.");
 
         m_radiance = props.texture_d65<Texture>("radiance", 1.f);
+        m_coefficient = props.texture<Texture>("coef", 1.f)->mean();
 
         m_flags = +EmitterFlags::Surface;
         if (m_radiance->is_spatially_varying())
@@ -77,6 +78,7 @@ public:
 
     void traverse(TraversalCallback *callback) override {
         callback->put_object("radiance", m_radiance.get(), +ParamFlags::Differentiable);
+        callback->put_parameter("coefficient", m_coefficient, +ParamFlags::Differentiable);
     }
 
     Spectrum eval(const SurfaceInteraction3f &si, Mask active) const override {
@@ -239,13 +241,16 @@ public:
         oss << "," << std::endl;
         if (m_medium) oss << string::indent(m_medium);
         else         oss << "  <no medium attached!>";
-        oss << std::endl << "]";
+        oss << std::endl;
+        oss << "  coefficient = " << string::indent(m_coefficient) << "," << std::endl;
+        oss << "]";
         return oss.str();
     }
 
     MI_DECLARE_CLASS()
 private:
     ref<Texture> m_radiance;
+    Float m_coefficient;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(AreaLight, Emitter)
