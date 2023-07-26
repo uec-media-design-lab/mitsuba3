@@ -68,7 +68,7 @@ public:
                   "shape.");
 
         m_radiance = props.texture_d65<Texture>("radiance", 1.f);
-        m_coefficient = props.texture<Texture>("coef", 1.f)->mean();
+        m_coefficient = props.texture<Texture>("coefficient", 1.f)->mean();
 
         m_flags = +EmitterFlags::Surface;
         if (m_radiance->is_spatially_varying())
