@@ -7,6 +7,7 @@
 #include <mitsuba/render/texture.h>
 #include <mitsuba/render/microfacet.h>
 #include <mitsuba/render/sampler.h>
+#include <mitsuba/core/traits.h>
 
 
 NAMESPACE_BEGIN(mitsuba)
@@ -29,6 +30,13 @@ The main purpose of this material is to be used as the BSDF of a shape enclosing
 
  */
 
+ /* constants */
+template <typename T> constexpr auto SqrtThree       = dr::scalar_t<T>(1.73205080756887729353);
+template <typename T> constexpr auto InvSqrtThree    = dr::scalar_t<T>(0.57735026918962576451);
+
+template <typename T> constexpr auto SqrtSix         = dr::scalar_t<T>(2.44948974278317809820);
+template <typename T> constexpr auto InvSqrtSix      = dr::scalar_t<T>(0.40824829046386301637);
+
 template <typename Float, typename Spectrum>
 class RoughRetroreflector final : public BSDF<Float, Spectrum> {
 public:
@@ -36,12 +44,12 @@ public:
     MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
 
     RoughRetroreflector(const Properties &props) : Base(props) {
-        m_pa = Normal3f(2*dr::InvSqrtSix<Float>, 0, dr::InvSqrtThree<Float>);                         // →
-        m_qa = Normal3f(-dr::InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);    // ↖
-        m_ra = Normal3f(-dr::InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);   // ↙
-        m_pb = Normal3f(-2*dr::InvSqrtSix<Float>, 0, dr::InvSqrtThree<Float>);                       // ←
-        m_qb = Normal3f(dr::InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);    // ↗
-        m_rb = Normal3f(dr::InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, dr::InvSqrtThree<Float>);   // ↘
+        m_pa = Normal3f(2*InvSqrtSix<Float>, 0, InvSqrtThree<Float>);                         // →
+        m_qa = Normal3f(-InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, InvSqrtThree<Float>);    // ↖
+        m_ra = Normal3f(-InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, InvSqrtThree<Float>);   // ↙
+        m_pb = Normal3f(-2*InvSqrtSix<Float>, 0, InvSqrtThree<Float>);                       // ←
+        m_qb = Normal3f(InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, InvSqrtThree<Float>);    // ↗
+        m_rb = Normal3f(InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, InvSqrtThree<Float>);   // ↘
 
         // # iors
         ScalarFloat int_ior = lookup_ior(props, "int_ior", "bk7");
