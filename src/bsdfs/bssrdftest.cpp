@@ -24,7 +24,7 @@ public:
     }
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
-                                             const SurfaceInteraction3f &si,
+                                             SurfaceInteraction3f &si,
                                              Float /* sample1 */,
                                              const Point2f &sample2,
                                              Mask active) const override {
@@ -45,9 +45,11 @@ public:
         // auto b = si.p[0];
         // printf("%f\n", a);
         // si.p = Point3f(si.p.x(), si.p.y(), si.p.z());
-            // Vector3f c = Vector3f(1.f, 0.5f, 0.f);
-            // Vector3f res = si.p + c;
-            // si.p +=  c;
+        Vector3f c = Vector3f(1.f, 0.5f, 0.f);
+        Vector3f res = si.p + c;
+        // si.p = res;
+        // si.diff_pos(c);
+
         // c.x = c.x + 1.f;
         // si.p.translate(si.wi);
         // printf("%lf, %lf, %lf", float(c.x()), float(c.x()), float(c.x()));

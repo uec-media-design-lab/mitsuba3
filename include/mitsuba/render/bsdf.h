@@ -317,6 +317,12 @@ public:
            Float sample1,
            const Point2f &sample2,
            Mask active = true) const = 0;
+    virtual std::pair<BSDFSample3f, Spectrum>
+    sample(const BSDFContext &ctx,
+           SurfaceInteraction3f &si,
+           Float sample1,
+           const Point2f &sample2,
+           Mask active = true) const = 0;
 
     /**
      * \brief Evaluate the BSDF f(wi, wo) or its adjoint version f^{*}(wi, wo)
