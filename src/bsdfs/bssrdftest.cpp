@@ -46,9 +46,8 @@ public:
         // printf("%f\n", a);
         // si.p = Point3f(si.p.x(), si.p.y(), si.p.z());
         Vector3f c = Vector3f(1.f, 0.5f, 0.f);
-        Vector3f res = si.p + c;
-        // si.p = res;
-        // si.diff_pos(c);
+        si.p += c;
+        // si.shift_pos(c);
 
         // c.x = c.x + 1.f;
         // si.p.translate(si.wi);
