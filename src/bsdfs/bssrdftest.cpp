@@ -17,6 +17,9 @@ public:
         m_flags = BSDFFlags::DiffuseReflection | BSDFFlags::FrontSide;
         dr::set_attr(this, "flags", m_flags);
         m_components.push_back(m_flags);
+        deltaX = props.texture<Texture>("dx", 0.f)->mean();
+        deltaY = props.texture<Texture>("dy", 0.f)->mean();
+        deltaZ = props.texture<Texture>("dz", 0.f)->mean();
     }
 
     void traverse(TraversalCallback *callback) override {
@@ -37,24 +40,12 @@ public:
         if (unlikely(dr::none_or<false>(active) ||
                      !ctx.is_enabled(BSDFFlags::DiffuseReflection)))
             return { bs, 0.f };
+        // printf("<%f, %f, %f>\t", si.p.x(), si.p.y(), si.p.z());
         
-        // Point3f a = 
-        // printf("<%f, %f, %f>\n", si.p.x(), si.p.y(), si.p.z());
-        // printf("<%lf, %lf, %lf>\n", si.p[0], si.p[0], si.p[0]);
-        // auto a = si.p.x();
-        // auto b = si.p[0];
-        // printf("%f\n", a);
-        // si.p = Point3f(si.p.x(), si.p.y(), si.p.z());
-        Vector3f c = Vector3f(10.f, 0.5f, 0.f);
+        Vector3f c = Vector3f(deltaX, deltaY, deltaZ);
         si.p += c;
-        // si.shift_pos(c);
-
-        // c.x = c.x + 1.f;
-        // si.p.translate(si.wi);
-        // printf("%lf, %lf, %lf", float(c.x()), float(c.x()), float(c.x()));
-
-        bs.wo = warp::square_to_cosine_hemisphere(sample2);
-        bs.pdf = warp::square_to_cosine_hemisphere_pdf(bs.wo);
+        bs.wo = reflect(si.wi);
+        bs.pdf = 1.f;
         bs.eta = 1.f;
         bs.sampled_type = +BSDFFlags::DiffuseReflection;
         bs.sampled_component = 0;
@@ -66,57 +57,12 @@ public:
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
                   const Vector3f &wo, Mask active) const override {
-        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
-
-        if (!ctx.is_enabled(BSDFFlags::DiffuseReflection))
-            return 0.f;
-
-        Float cos_theta_i = Frame3f::cos_theta(si.wi),
-              cos_theta_o = Frame3f::cos_theta(wo);
-
-        active &= cos_theta_i > 0.f && cos_theta_o > 0.f;
-
-        UnpolarizedSpectrum value =
-            m_reflectance->eval(si, active) * dr::InvPi<Float> * cos_theta_o;
-
-        return depolarizer<Spectrum>(value) & active;
+        return 0.f;
     }
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
               const Vector3f &wo, Mask active) const override {
-        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
-
-        if (!ctx.is_enabled(BSDFFlags::DiffuseReflection))
-            return 0.f;
-
-        Float cos_theta_i = Frame3f::cos_theta(si.wi),
-              cos_theta_o = Frame3f::cos_theta(wo);
-
-        Float pdf = warp::square_to_cosine_hemisphere_pdf(wo);
-
-        return dr::select(cos_theta_i > 0.f && cos_theta_o > 0.f, pdf, 0.f);
-    }
-
-    std::pair<Spectrum, Float> eval_pdf(const BSDFContext &ctx,
-                                        const SurfaceInteraction3f &si,
-                                        const Vector3f &wo,
-                                        Mask active) const override {
-        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
-
-        if (!ctx.is_enabled(BSDFFlags::DiffuseReflection))
-            return { 0.f, 0.f };
-
-        Float cos_theta_i = Frame3f::cos_theta(si.wi),
-              cos_theta_o = Frame3f::cos_theta(wo);
-
-        active &= cos_theta_i > 0.f && cos_theta_o > 0.f;
-
-        UnpolarizedSpectrum value =
-            m_reflectance->eval(si, active) * dr::InvPi<Float> * cos_theta_o;
-
-        Float pdf = warp::square_to_cosine_hemisphere_pdf(wo);
-
-        return { depolarizer<Spectrum>(value) & active, dr::select(active, pdf, 0.f) };
+        return 0.f;
     }
 
     Spectrum eval_diffuse_reflectance(const SurfaceInteraction3f &si,
@@ -135,6 +81,7 @@ public:
     MI_DECLARE_CLASS()
 private:
     ref<Texture> m_reflectance;
+    Float deltaX, deltaY, deltaZ;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(BSSRDFtest, BSDF)
