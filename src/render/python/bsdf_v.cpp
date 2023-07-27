@@ -77,7 +77,7 @@ template <typename Ptr, typename Cls> void bind_bsdf_generic(Cls &cls) {
     MI_PY_IMPORT_TYPES()
 
     cls.def("sample",
-            [](Ptr bsdf, const BSDFContext &ctx, const SurfaceInteraction3f &si,
+            [](Ptr bsdf, const BSDFContext &ctx, SurfaceInteraction3f &si,
                Float sample1, const Point2f &sample2, Mask active) {
                 return bsdf->sample(ctx, si, sample1, sample2, active);
             }, "ctx"_a, "si"_a, "sample1"_a, "sample2"_a,
@@ -98,7 +98,7 @@ template <typename Ptr, typename Cls> void bind_bsdf_generic(Cls &cls) {
                 Mask active) { return bsdf->eval_pdf(ctx, si, wo, active);
              }, "ctx"_a, "si"_a, "wo"_a, "active"_a = true, D(BSDF, eval_pdf))
         .def("eval_pdf_sample",
-             [](Ptr bsdf, const BSDFContext &ctx, const SurfaceInteraction3f &si,
+             [](Ptr bsdf, const BSDFContext &ctx, SurfaceInteraction3f &si,
                 const Vector3f &wo, Float sample1, const Point2f &sample2,
                 Mask active) {
                     return bsdf->eval_pdf_sample(ctx, si, wo, sample1, sample2, active);

@@ -450,7 +450,7 @@ public:
      */
     virtual std::tuple<Spectrum, Float, BSDFSample3f, Spectrum>
     eval_pdf_sample(const BSDFContext &ctx,
-                    const SurfaceInteraction3f &si,
+                    SurfaceInteraction3f &si,
                     const Vector3f &wo,
                     Float sample1,
                     const Point2f &sample2,
