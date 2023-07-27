@@ -31,13 +31,6 @@ public:
     PyBSDF(const Properties &props) : BSDF(props) { }
 
     std::pair<BSDFSample3f, Spectrum>
-    sample(const BSDFContext &ctx, const SurfaceInteraction3f &si,
-           Float sample1, const Point2f &sample2,
-           Mask active) const override {
-        using Return = std::pair<BSDFSample3f, Spectrum>;
-        PYBIND11_OVERRIDE_PURE(Return, BSDF, sample, ctx, si, sample1, sample2, active);
-    }
-    std::pair<BSDFSample3f, Spectrum>
     sample(const BSDFContext &ctx, SurfaceInteraction3f &si,
            Float sample1, const Point2f &sample2,
            Mask active) const override {

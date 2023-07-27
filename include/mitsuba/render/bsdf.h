@@ -313,12 +313,6 @@ public:
      */
     virtual std::pair<BSDFSample3f, Spectrum>
     sample(const BSDFContext &ctx,
-           const SurfaceInteraction3f &si,
-           Float sample1,
-           const Point2f &sample2,
-           Mask active = true) const = 0;
-    virtual std::pair<BSDFSample3f, Spectrum>
-    sample(const BSDFContext &ctx,
            SurfaceInteraction3f &si,
            Float sample1,
            const Point2f &sample2,
