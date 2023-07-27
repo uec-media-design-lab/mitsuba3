@@ -3,6 +3,7 @@
 #include <mitsuba/core/warp.h>
 #include <mitsuba/render/bsdf.h>
 #include <mitsuba/render/texture.h>
+#include <mitsuba/render/sampler.h>
 
 NAMESPACE_BEGIN(mitsuba)
 // diffuse BSDFをベースにBSSRDF化できないか試してみる。
@@ -20,18 +21,41 @@ public:
         deltaX = props.texture<Texture>("dx", 0.f)->mean();
         deltaY = props.texture<Texture>("dy", 0.f)->mean();
         deltaZ = props.texture<Texture>("dz", 0.f)->mean();
+        randX = props.texture<Texture>("rx", 0.f)->mean();
+        randY = props.texture<Texture>("ry", 0.f)->mean();
+        randZ = props.texture<Texture>("rz", 0.f)->mean();
     }
 
     void traverse(TraversalCallback *callback) override {
         callback->put_object("reflectance", m_reflectance.get(), +ParamFlags::Differentiable);
     }
 
+    mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
+        mitsuba::PCG32<UInt32> rng(PCG32_DEFAULT_STATE, seed);
+        rng.state = seed*1000000;
+        rng.template next_float<Float>();
+        return rng;
+    }
+    Float rand(mitsuba::PCG32<UInt32> &generator) const {
+        return generator.template next_float<Float>();
+    }
+    Point3f rand3(mitsuba::PCG32<UInt32> &generator) const {
+        Point3f sample3;
+        sample3.x() = rand(generator);
+        sample3.y() = rand(generator);
+        sample3.z() = rand(generator);
+        return sample3;
+    }
+
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              SurfaceInteraction3f &si,
-                                             Float /* sample1 */,
+                                             Float sample1,
                                              const Point2f &sample2,
                                              Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
+
+        Point3f r3 = Point3f(0.f, 0.f, 0.f);
+        auto rng = setRandomGenerator(sample1*1000000); // random number generator
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
@@ -43,7 +67,9 @@ public:
         // printf("<%f, %f, %f>\t", si.p.x(), si.p.y(), si.p.z());
         
         Vector3f c = Vector3f(deltaX, deltaY, deltaZ);
-        si.p += c;
+        r3 = rand3(rng);
+        Vector3f randShift = Vector3f(randX*(r3.x()-0.5), randY*(r3.y()), randZ*(r3.z()-0.5));
+        si.p += c + randShift;
         bs.wo = reflect(si.wi);
         bs.pdf = 1.f;
         bs.eta = 1.f;
@@ -82,6 +108,7 @@ public:
 private:
     ref<Texture> m_reflectance;
     Float deltaX, deltaY, deltaZ;
+    Float randX, randY, randZ;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(BSSRDFtest, BSDF)
