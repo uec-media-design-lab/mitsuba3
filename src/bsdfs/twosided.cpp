@@ -109,7 +109,7 @@ public:
     }
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx_,
-                                             const SurfaceInteraction3f &si_,
+                                             SurfaceInteraction3f &si_,
                                              Float sample1,
                                              const Point2f &sample2,
                                              Mask active) const override {

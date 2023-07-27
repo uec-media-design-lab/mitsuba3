@@ -73,7 +73,7 @@ public:
         callback->put_object("transmittance",   m_transmittance.get(),  +ParamFlags::Differentiable);
     }
 
-    std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx, const SurfaceInteraction3f &si,
+    std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx, SurfaceInteraction3f &si,
                                              Float /* sample1 */, const Point2f &/* sample2 */,
                                              Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);

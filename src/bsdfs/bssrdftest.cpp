@@ -7,7 +7,7 @@
 NAMESPACE_BEGIN(mitsuba)
 // diffuse BSDFをベースにBSSRDF化できないか試してみる。
 template <typename Float, typename Spectrum>
-class BSSRDFtest final : public BSDF<Float, Spectrum> {
+class BSSRDFtest : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture)
@@ -45,7 +45,7 @@ public:
         // auto b = si.p[0];
         // printf("%f\n", a);
         // si.p = Point3f(si.p.x(), si.p.y(), si.p.z());
-        Vector3f c = Vector3f(1.f, 0.5f, 0.f);
+        Vector3f c = Vector3f(10.f, 0.5f, 0.f);
         si.p += c;
         // si.shift_pos(c);
 
