@@ -142,6 +142,9 @@ public:
         m_surface_reflectance   = props.texture<Texture>("surface_reflectance", 1.f);
     
         m_internal_reflectance   = props.texture<Texture>("internal_reflectance", 1.f);
+        randX = props.texture<Texture>("rx", 0.f)->mean();
+        randY = props.texture<Texture>("ry", 0.f)->mean();
+        randZ = props.texture<Texture>("rz", 0.f)->mean();
     }
 
     void traverse(TraversalCallback *callback) override {
@@ -184,6 +187,13 @@ public:
         sample2.x() = rand(generator);
         sample2.y() = rand(generator);
         return sample2;
+    }
+    Point3f rand3c(mitsuba::PCG32<UInt32> &generator) const {
+        Point3f sample3;
+        sample3.x() = rand(generator)-0.5f;
+        sample3.y() = rand(generator)-0.5f;
+        sample3.z() = rand(generator)-0.5f;
+        return sample3;
     }
 
     // rotations
@@ -725,6 +735,8 @@ public:
         if (dr::any_or<true>(selected_rr)) {
             // printf("R");
             // printV(si.wi);printV(wo_rr); printf("\n");
+            Vector3f r3 = rand3c(rng);
+            si.p[selected_rr] += Vector3f(randX*r3.x(), randY*r3.y(), randZ*r3.z());
             bs.wo[selected_rr] = wo_rr;
             bs.eta = dr::select(selected_rr, 1.f, bs.eta);
             bs.sampled_type = dr::select(selected_rr, UInt32(+BSDFFlags::GlossyTransmission | +BSDFFlags::GlossyReflection), bs.sampled_type);
@@ -1053,6 +1065,7 @@ private:
     Float diffuseFactor;
     ref<Texture> m_surface_reflectance;
     ref<Texture> m_internal_reflectance;
+    Float randX, randY, randZ;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector, BSDF)
