@@ -16,6 +16,7 @@
 
 - [Mitsuba Renderer 3 - AIRR](#mitsuba-renderer-3---airr)
   - [目次](#目次)
+  - [導入方法](#導入方法)
   - [チュートリアル](#チュートリアル)
   - [再帰性反射材(roughretroreflector)](#再帰性反射材roughretroreflector)
   - [ハーフミラー(halfmirror)](#ハーフミラーhalfmirror)
@@ -28,6 +29,14 @@
     - [Requirements](#requirements)
   - [Usage](#usage)
   - [About](#about)
+
+## 導入方法
+下記コマンドから本ブランチのリポジトリをクローンした後、Mitsuba Renderer 3のドキュメントの[Compiling the system (developer guide)](https://mitsuba.readthedocs.io/en/stable/src/developer_guide/compiling.html#sec-compiling)に従ってコンパイルしてください。
+
+```Shell
+git clone -b airr git@github.com:uec-media-design-lab/mitsuba3.git
+```
+
 
 ## チュートリアル
 [こちら](https://github.com/uec-media-design-lab/mitsuba3/blob/airr/airr-examples/render.ipynb)からAIRRのシーンを読み込み、それぞれの光学素子のパラメータを変えながら空中像をレンダリングする様子が確認できます。
