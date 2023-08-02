@@ -84,7 +84,7 @@ public:
     Spectrum eval(const SurfaceInteraction3f &si, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::EndpointEvaluate, active);
 
-        auto result = depolarizer<Spectrum>(m_radiance->eval(si, active)) &
+        auto result = depolarizer<Spectrum>(m_radiance->eval(si, active) * m_coefficient) &
                       (Frame3f::cos_theta(si.wi) > 0.f);
 
         return result;
