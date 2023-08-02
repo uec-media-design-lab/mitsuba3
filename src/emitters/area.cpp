@@ -157,7 +157,7 @@ public:
 
         UnpolarizedSpectrum spec = m_radiance->eval(si, active) / ds.pdf;
         ds.emitter = this;
-        return { ds, depolarizer<Spectrum>(spec) & active };
+        return { ds, depolarizer<Spectrum>(spec) * m_coefficient & active };
     }
 
     Float pdf_direction(const Interaction3f &it, const DirectionSample3f &ds,
@@ -189,7 +189,7 @@ public:
         active &= dp < 0.f;
 
         SurfaceInteraction3f si(ds, it.wavelengths);
-        UnpolarizedSpectrum spec = m_radiance->eval(si, active);
+        UnpolarizedSpectrum spec = m_radiance->eval(si, active) * m_coefficient;
         return dr::select(active, depolarizer<Spectrum>(spec), 0.f);
     }
 
