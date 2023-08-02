@@ -1,3 +1,115 @@
+# Mitsuba Renderer 3 - AIRR
+[Mitsuba Renderer 3]()のAIRRによる空中像シミュレーション用のブランチです。
+
+以下のプラグインが新しく利用できます。
+
+- 再帰反射材(roughretroreflector)
+- ハーフミラー(halfmirror)
+
+以下の既存のプラグインに変更を加えました。
+
+- エリアライト(area)
+
+基本的な使い方や他のプラグインの使い方などは[公式ドキュメント](https://mitsuba.readthedocs.io/en/stable/index.html)をご確認ください。
+
+## 目次
+
+- [Mitsuba Renderer 3 - AIRR](#mitsuba-renderer-3---airr)
+  - [目次](#目次)
+  - [再帰性反射材(roughretroreflector)](#再帰性反射材roughretroreflector)
+  - [ハーフミラー(halfmirror)](#ハーフミラーhalfmirror)
+  - [エリアライト(area)](#エリアライトarea)
+- [Mitsuba Renderer 3](#mitsuba-renderer-3)
+  - [Introduction](#introduction)
+  - [Main Features](#main-features)
+  - [Tutorial videos, documentation](#tutorial-videos-documentation)
+  - [Installation](#installation)
+    - [Requirements](#requirements)
+  - [Usage](#usage)
+  - [About](#about)
+
+
+## 再帰性反射材(roughretroreflector)
+
+| Parameter | Type | Description |
+| :---: | :---: | :---: |
+| `int_ior` | `float` or `string` | プリズムの絶対屈折率を設定します。数値もしくは[マテリアル名](https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#dielectric-ior-list:~:text=Instead%20of%20specifying%20numerical%20values%20for%20the%20indices%20of%20refraction%2C%20Mitsuba%203%20comes%20with%20a%20list%20of%20presets%20that%20can%20be%20specified%20with%20the%20material%20parameter%3A)で設定できます。(デフォルト：`bk7` / 1.5046) |
+| ext_ior | `float` or `string` | 再帰反射材の外部の絶対屈折率を設定します。数値もしくは[マテリアル名](https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#dielectric-ior-list:~:text=Instead%20of%20specifying%20numerical%20values%20for%20the%20indices%20of%20refraction%2C%20Mitsuba%203%20comes%20with%20a%20list%20of%20presets%20that%20can%20be%20specified%20with%20the%20material%20parameter%3A)から設定します。(デフォルト：`air` / 1.000277) |
+| `base_material` | `string` | 裏面に蒸着された材質の屈折率を設定します。名前は[ドキュメント記載のマテリアル名](https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#conductor-ior-list)から設定できます。(デフォルト：Al) |
+| `base_eta`, `base_k` | `spectrum` or `texture` | 裏面に蒸着された材質の屈折率を設定します。`base_material`の代わりに複素屈折率で直接設定する場合は、この2つのパラメータを利用します。(デフォルト：`base_material`に従う) |
+| `distribution` | `string` | 反射光の拡散に関連した微小表面の法線分布関数を設定します。`beckmann`と`ggx`が利用可能です。(デフォルト：`beckmann`)|
+|`alpha`, `alpha_surface`, `alpha_internal`, `alpha_u_surface`, `alpha_v_surface`, `alpha_u_internal`, `alpha_v_internal` | `texture` or `float` | 各面の粗さを設定します。(デフォルト：`alpha`=0.1)<br>- `alpha`: すべての面の粗さを設定します。<br>- `alpha_surface`: 表面のみの粗さを設定します。<br>- `alpha_internal`: 裏面のみの粗さを設定します。<br>- `alpha_u_surface`: 表面のUV座標系におけるU方向の粗さを設定します。<br>- `alpha_v_surface`: 表面のUV座標系におけるV方向の粗さを設定します。<br>- `alpha_u_internal`: 裏面のUV座標系におけるU方向の粗さを設定します。<br>- `alpha_v_internal`: 裏面のUV座標系におけるV方向の粗さを設定します。|
+| `surface_reflectance` | `spectrum` or `texture` | 表面の反射の係数を設定します。再帰反射における表面の透過にも影響します。(デフォルト：1.0) |
+| `internal_reflectance` | `spectrum` or `texture` | 裏面の反射の係数を設定します。(デフォルト：1.0) |
+
+実際のAIRRシステムに使われるような、裏面が金属蒸着されてできているコーナーキューブ型の再帰反射材のプラグインです。
+
+`alpha`を設定することで、再帰反射の方向を中心に広がる様子を表現することができます。
+
+```XML
+<bsdf type="roughretroreflector">
+    <float name="alpha" value="0.001"/>
+</bsdf>
+
+<bsdf type="roughretroreflector" id="retroreflector_smoothSurface">
+    <float name="alpha_surface" value="0"/>
+    <float name="alpha_internal" value="0.0005"/>
+    <float name="internal_reflectance" vaue="0.83"/>
+</bsdf>
+```
+
+## ハーフミラー(halfmirror)
+
+| Parameter | Type | Description |
+| :---: | :---: | :---: |
+| `reflectance` | `float` | 反射率を設定します。(デフォルト：0.5) |
+| `transmittance` | `float` | 透過率を設定します。(デフォルト：0.5) |
+
+入射光を一定の確率で反射、一定の確率で透過する、ハーフミラーを模したプラグインです。
+
+`reflectance`と`transmittance`の合計を1未満にすることで、ハーフミラーによる光の吸収も再現することができます。
+
+```XML
+<bsdf type="halfmirror" id="halfMirror_50R50T"/>
+
+<bsdf type="halfmirror" id="halfMirror_55R30T">
+    <float name="reflectance" value="0.55"/>
+    <float name="transmittance" value="0.30"/>
+</bsdf>
+```
+
+
+## エリアライト(area)
+
+| Parameter | Type | Description |
+| :---: | :---: | :---: |
+| `radiance` | `spectrum` or `texture` | 放射輝度(単位面積・単位立体角あたりの放射束)を設定します。 |
+| `coefficient` | `float` | `radiance`に一律に乗する係数を設定します。(デフォルト：1.0) |
+
+Mitsuba Renderer 3に標準搭載されている[Area Light](https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_emitters.html#area-light-area)に係数`coefficient`を加えたものです。
+
+エリアライトの光は等方的に広がるため、どの方向から見ても見かけの明るさが等しくなります。
+
+`radiance`に画像をテクスチャとして設定したうえで、`coefficient`のパラメータを調節することでディスプレイ自体の明るさをシーンファイルから設定できます。
+
+```XML
+<emitter type="area" id="display">
+    <texture name="radiance" type="bitmap">
+        <string name="filename" value="myDisplayedImage.png"/>
+    </texture>
+</emitter>
+
+<emitter type="area" id="display_highBrightness">
+    <texture name="radiance" type="bitmap">
+        <string name="filename" value="myDisplayedImage.png"/>
+    </texture>
+    <float name="coefficient" value="2.0"/>
+</emitter>
+```
+
+
+---
+
 <!-- <img src="https://github.com/mitsuba-renderer/mitsuba3/raw/master/docs/images/logo_plain.png" width="120" height="120" alt="Mitsuba logo"> -->
 
 <img src="https://raw.githubusercontent.com/mitsuba-renderer/mitsuba-data/master/docs/images/banners/banner_01.jpg"
