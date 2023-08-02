@@ -71,6 +71,11 @@ git clone -b airr git@github.com:uec-media-design-lab/mitsuba3.git
 </bsdf>
 ```
 
+| ![](airr-examples/rendered/rr0000.png) | ![](airr-examples/rendered/rr0001.png) | ![](airr-examples/rendered/rr0005.png) |
+| :---: | :---: | :---: |
+| `alpha`=0 | `alpha`=0.001 | `alpha`=0.005 |
+
+
 ## ハーフミラー(halfmirror)
 
 | Parameter | Type | Description |
@@ -91,6 +96,9 @@ git clone -b airr git@github.com:uec-media-design-lab/mitsuba3.git
 </bsdf>
 ```
 
+| ![](airr-examples/rendered/hm9505.png) | ![](airr-examples/rendered/rr0001.png) | ![](airr-examples/rendered/hm2020.png) |
+| :---: | :---: | :---: |
+| `reflectance`=0.95<br>`transmittance`=0.05 | `reflectance`=0.50<br>`transmittance`=0.50 | `reflectance`=0.20<br>`transmittance`=0.20 |
 
 ## エリアライト(area)
 
@@ -120,6 +128,9 @@ Mitsuba Renderer 3に標準搭載されている[Area Light](https://mitsuba.rea
 </emitter>
 ```
 
+| ![](airr-examples/rendered/disp01.png) | ![](airr-examples/rendered/rr0001.png) | ![](airr-examples/rendered/disp30.png) |
+| :---: | :---: | :---: |
+| `coefficient`=0.1 | `coefficient`=1.0 | `coefficient`=3.0 |
 
 ---
 
