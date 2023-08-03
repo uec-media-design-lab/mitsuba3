@@ -1,6 +1,6 @@
 # Mitsuba Renderer 3 - Midair Optimization
 
-Mitsuba3の空中像光学素子用ブランチ．
+Mitsuba3の空中像光学素子の最適化用ブランチ．
 
 ---
 
