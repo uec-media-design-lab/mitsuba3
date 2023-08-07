@@ -59,12 +59,12 @@ emitter shape and specify an :monosp:`area` instance as its child:
  */
 
 template <typename Float, typename Spectrum>
-class AreaLight final : public Emitter<Float, Spectrum> {
+class MidAirAreaLight final : public Emitter<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(Emitter, m_flags, m_shape, m_medium)
     MI_IMPORT_TYPES(Scene, Shape, Texture)
 
-    AreaLight(const Properties &props) : Base(props) {
+    MidAirAreaLight(const Properties &props) : Base(props) {
         if (props.has_property("to_world"))
             Throw("Found a 'to_world' transformation -- this is not allowed. "
                   "The area light inherits this transformation from its parent "
@@ -87,18 +87,26 @@ public:
         MI_MASKED_FUNCTION(ProfilerPhase::EndpointEvaluate, active);
         
         // Attenuation rates in angles from 10 to 60 degrees with 5 degree intervals
-        Float[] att_tbl = {0., 0.07058824, 0.12156863, 0.17254902, 0.24705882, 0.34117647, 0.42745098, 0.52941176, 0.56078431, 0.44705882, 0.33464567};
+        constexpr float att_tbl[] = {0., 0.07058824, 0.12156863, 0.17254902, 0.24705882, 0.34117647, 0.42745098, 0.52941176, 0.56078431, 0.44705882, 0.33464567};
 
         /// @todo: calculate attenuation according to the direction of incident ray
         Float dp = Frame3f::cos_theta(si.wi);
         Float degree = dr::acos(dp) * 180 / dr::Pi<Float>;
         degree = dr::abs(degree);
-        float coeff = degree > 60 || degree < 10 ? 0.0f : 1.0f;
+        Mask is_mult_coeff = degree > Float(60) || degree < Float(10);
+        float coeff = dr::any_or<true>(is_mult_coeff) ? 0.0f : 1.0f;
+
+        // dr::fmadd(a, b, c) = a * b + c
+
+        /// @todo: Implement the linear interpolation according to the indicent direction and the attenuation table.
+        ///        dr::floor(degree / 5) doesn't return simple `int` value but dr::DiffArray<CUDA/LLVMArray<int>> 
+        ///        which is not directly compatible with the index of the array.
+
         // Select attenuation rate according to the angle
         int i0 = dr::floor(degree / 5);
         int i1 = i0 < 10 ? i0 + 1 : i0; // Avoid out of range
-        Float t = (float)(degree - i0 * 5) / 5; // Interpolation factor
-        Float attenuation = (1 - t) * att_tbl[i0] + t * att_tbl[i1]; // Linear interpolation
+        float t = (float)(degree - i0 * 5) / 5; // Interpolation factor
+        float attenuation = (1 - t) * att_tbl[i0] + t * att_tbl[i1]; // Linear interpolation
         attenuation *= coeff; // Ignore attenuation when the angle is out of range
         
         auto result = depolarizer<Spectrum>(m_radiance->eval(si, active) * attenuation) &
@@ -250,7 +258,7 @@ public:
 
     std::string to_string() const override {
         std::ostringstream oss;
-        oss << "AreaLight[" << std::endl
+        oss << "MidAirAreaLight[" << std::endl
             << "  radiance = " << string::indent(m_radiance) << "," << std::endl
             << "  surface_area = ";
         if (m_shape) oss << m_shape->surface_area();
@@ -267,6 +275,6 @@ private:
     ref<Texture> m_radiance;
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(AreaLight, Emitter)
-MI_EXPORT_PLUGIN(AreaLight, "Area emitter")
+MI_IMPLEMENT_CLASS_VARIANT(MidAirAreaLight, Emitter)
+MI_EXPORT_PLUGIN(MidAirAreaLight, "Mid-air Area emitter")
 NAMESPACE_END(mitsuba)
