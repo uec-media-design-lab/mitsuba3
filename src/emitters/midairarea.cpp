@@ -87,30 +87,35 @@ public:
         MI_MASKED_FUNCTION(ProfilerPhase::EndpointEvaluate, active);
         
         // Attenuation rates in angles from 10 to 60 degrees with 5 degree intervals
-        constexpr float att_tbl[] = {0., 0.07058824, 0.12156863, 0.17254902, 0.24705882, 0.34117647, 0.42745098, 0.52941176, 0.56078431, 0.44705882, 0.33464567};
+        constexpr float att_tbl[] = {0.f, 0.07058824f, 0.12156863f, 0.17254902f, 0.24705882f, 0.34117647f, 0.42745098f, 0.52941176f, 0.56078431f, 0.44705882f, 0.33464567f};
 
-        /// @todo: calculate attenuation according to the direction of incident ray
+        // Calculate the angle between the incident direction and the normal
+        /// @todo: Consider that 45 degree is the angle where the attenuation rate is the smallest. 
         Float dp = Frame3f::cos_theta(si.wi);
-        Float degree = dr::acos(dp) * 180 / dr::Pi<Float>;
-        degree = dr::abs(degree);
-        Mask is_mult_coeff = degree > Float(60) || degree < Float(10);
-        float coeff = dr::any_or<true>(is_mult_coeff) ? 0.0f : 1.0f;
+        Float deg_v = dr::acos(dp) * 180 / dr::Pi<Float>;
 
-        // dr::fmadd(a, b, c) = a * b + c
-
-        /// @todo: Implement the linear interpolation according to the indicent direction and the attenuation table.
-        ///        dr::floor(degree / 5) doesn't return simple `int` value but dr::DiffArray<CUDA/LLVMArray<int>> 
-        ///        which is not directly compatible with the index of the array.
+        float degree = 0.0f;
+        // Switch according to the type of Float
+        if constexpr (dr::is_array_v<Float> || dr::is_llvm_v<Float> || dr::is_cuda_v<Float>)
+            degree = deg_v[0];
+        else
+            degree = deg_v;
+        degree = fabsf(degree);
+        // Ignore the attenuation when the angle is out of range
+        bool is_mult_coeff = 10.0f <= degree || degree <= 60.0f;
+        float coeff = is_mult_coeff ? 1.0f : 0.0f;
 
         // Select attenuation rate according to the angle
-        int i0 = dr::floor(degree / 5);
+        int i0 = static_cast<int>(floor(degree / 5));
         int i1 = i0 < 10 ? i0 + 1 : i0; // Avoid out of range
         float t = (float)(degree - i0 * 5) / 5; // Interpolation factor
         float attenuation = (1 - t) * att_tbl[i0] + t * att_tbl[i1]; // Linear interpolation
-        attenuation *= coeff; // Ignore attenuation when the angle is out of range
+        attenuation *= coeff;
         
+        // Calculate the radiance with attenuation according to the angle
         auto result = depolarizer<Spectrum>(m_radiance->eval(si, active) * attenuation) &
                       (Frame3f::cos_theta(si.wi) > 0.f);
+        // auto result = depolarizer<Spectrum>(m_radiance->eval(si, active)) & (Frame3f::cos_theta(si.wi) > 0.f);
 
         return result;
     }
