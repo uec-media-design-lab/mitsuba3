@@ -94,19 +94,20 @@ public:
         Float dp = Frame3f::cos_theta(si.wi);
         Float deg_v = dr::acos(dp) * 180 / dr::Pi<Float>;
 
-        float degree = 0.0f;
+        float degree = 45.0f;
         // Switch according to the type of Float
+        /// @todo: This compile-time branch will cause the runtime error with cuda or llvm backend.
         if constexpr (dr::is_array_v<Float> || dr::is_llvm_v<Float> || dr::is_cuda_v<Float>)
             degree = deg_v[0];
         else
             degree = deg_v;
-        degree = fabsf(degree);
+        degree = dr::abs(degree);
         // Ignore the attenuation when the angle is out of range
         bool is_mult_coeff = 10.0f <= degree || degree <= 60.0f;
         float coeff = is_mult_coeff ? 1.0f : 0.0f;
 
-        // Select attenuation rate according to the angle
-        int i0 = static_cast<int>(floor(degree / 5));
+        // // Select attenuation rate according to the angle
+        int i0 = static_cast<int>(dr::floor(degree / 5));
         int i1 = i0 < 10 ? i0 + 1 : i0; // Avoid out of range
         float t = (float)(degree - i0 * 5) / 5; // Interpolation factor
         float attenuation = (1 - t) * att_tbl[i0] + t * att_tbl[i1]; // Linear interpolation
