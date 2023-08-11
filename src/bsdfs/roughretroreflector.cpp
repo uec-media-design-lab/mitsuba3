@@ -866,7 +866,7 @@ public:
         // printf("(%f, %f, %f)\n", brdf_r, brdf_rr, brdf_d);
         // Mask invalid = !isfinite(brdf_d) || !isfinite(brdf_rr) || !isfinite(brdf_d);
         // if (dr::any_or<true>(invalid)) { printf("invalid:(%f, %f, %f)\t", brdf_d, brdf_rr, brdf_r);}
-        return (active, value, 0.f);
+        return value & active;
     }
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
