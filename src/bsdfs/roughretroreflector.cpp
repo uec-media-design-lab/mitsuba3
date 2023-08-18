@@ -122,6 +122,7 @@ public:
         m_components.push_back(BSDFFlags::GlossyReflection | BSDFFlags::GlossyTransmission | BSDFFlags::FrontSide | BSDFFlags::BackSide | anistropic);
         m_components.push_back(BSDFFlags::DiffuseReflection | BSDFFlags::FrontSide);
         m_flags= m_components[0] | m_components[1] | m_components[2];
+        dr::set_attr(this, "flags", m_flags);
     
         // sample_visible
         m_sample_visible = props.get<bool>("sample_visible", true);
@@ -469,7 +470,7 @@ public:
 
             // RetroReflection
             // val_rr = pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * pow(Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo, 0.2);
-            val_rr = dr::select(!incorrectRRpath, 0.f, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era);
+            val_rr = dr::select(!incorrectRRpath, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era, 0.f);
             // printf("[P:%f, F:%f, G:%f, D:%f, J:%f]\n", pathProb, (1.f-Fi)*F1*F2*F3*(1.f-Fo), Gi*G1*G2*G3*Go, pow(Di*D1*D2*D3*Do, 0.2), Ji*J1*J2*J3*Jo);
 
             // Diffuse
