@@ -189,23 +189,23 @@ public:
 
     // rotations
     Float mag(Normal3f n) const {
-        return sqrt(n.x()*n.x() + n.y()*n.y() + n.z()*n.z());
+        return dr::sqrt(n.x()*n.x() + n.y()*n.y() + n.z()*n.z());
     }
     Normal3f rotateNormal(const Normal3f n, const Normal3f from, const Normal3f to) const {
-        Normal3f fromNorm = normalize(from);
-        Normal3f toNorm = normalize(to);
-        Normal3f rotateAxis = normalize(cross(fromNorm, toNorm));
-        Float s = mag(cross(fromNorm, toNorm));
-        Float c = dot(fromNorm, toNorm);
-        return c*n + (1-c)*dot(n,rotateAxis)*rotateAxis +s*cross(rotateAxis,n);
+        Normal3f fromNorm = dr::normalize(from);
+        Normal3f toNorm = dr::normalize(to);
+        Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
+        Float s = mag(dr::cross(fromNorm, toNorm));
+        Float c = dr::dot(fromNorm, toNorm);
+        return c*n + (1-c)*dr::dot(n,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,n);
     }
     Vector3f rotateVector(const Vector3f v, const Normal3f from, const Normal3f to) const {
-        Normal3f fromNorm = normalize(from);
-        Normal3f toNorm = normalize(to);
-        Normal3f rotateAxis = normalize(cross(fromNorm, toNorm));
-        Float s = mag(cross(fromNorm, toNorm));
-        Float c = dot(fromNorm, toNorm);
-        return c*v + (1-c)*dot(v,rotateAxis)*rotateAxis +s*cross(rotateAxis,v);
+        Normal3f fromNorm = dr::normalize(from);
+        Normal3f toNorm = dr::normalize(to);
+        Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
+        Float s = mag(dr::cross(fromNorm, toNorm));
+        Float c = dr::dot(fromNorm, toNorm);
+        return c*v + (1-c)*dr::dot(v,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,v);
     }
 
     // sampleRoute
@@ -219,9 +219,9 @@ public:
         Point2f r2 = rand2(rng);
 
         // 1st surface
-        Float inner_a = dr::clamp(dot(-wi, a), 0.f, 1.f);
-        Float inner_b = dr::clamp(dot(-wi, b), 0.f, 1.f);
-        Float inner_c = dr::clamp(dot(-wi, c), 0.f, 1.f);
+        Float inner_a = dr::clamp(dr::dot(-wi, a), 0.f, 1.f);
+        Float inner_b = dr::clamp(dr::dot(-wi, b), 0.f, 1.f);
+        Float inner_c = dr::clamp(dr::dot(-wi, c), 0.f, 1.f);
         Float invDenominator = 1.f / (inner_a + inner_b + inner_c);
         n1 =    dr::select(Mask(r2.x() <= inner_a*invDenominator), a,
                 dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), b, c));
@@ -234,8 +234,8 @@ public:
         nt2 =   dr::select(Mask(r2.x() <= inner_a*invDenominator), c, 
                 dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), c, b));
         vt = reflect(-wi, n1);
-        Float inner_nt1 = dr::clamp(dot(-vt, nt1), 0.f, 1.f);
-        Float inner_nt2 = dr::clamp(dot(-vt, nt2), 0.f, 1.f);
+        Float inner_nt1 = dr::clamp(dr::dot(-vt, nt1), 0.f, 1.f);
+        Float inner_nt2 = dr::clamp(dr::dot(-vt, nt2), 0.f, 1.f);
         invDenominator = 1.f / (inner_nt1 + inner_nt2);
 
         n2 =            dr::select(Mask(r2.y() <= inner_nt1*invDenominator), nt1, nt2);
@@ -247,13 +247,13 @@ public:
 
     // ERA
     Float ERA(const Float cos_theta_i, const Float sin_phi_i, const Float cos_phi_i) const {
-        Float x = dr::rad_to_deg(acos(abs(cos_theta_i)));
-        Float x_phi = dr::mulsign(dr::rad_to_deg(acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
-        Float x_phi_blend = abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
+        Float x = dr::rad_to_deg(dr::acos(dr::abs(cos_theta_i)));
+        Float x_phi = dr::mulsign(dr::rad_to_deg(dr::acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
+        Float x_phi_blend = dr::abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
         Float val_upper = ERA_upperBoundary(x);
         Float val_lower = ERA_lowerBoundary(x);
-        // printf("phi:%f\tphi:%f\tphimod:%f\tphimodabs30:%f\tblend:%f\n",dr::rad_to_deg(acos(cos_phi_i)), x_phi, fmod(x_phi, 60.f), abs(fmod(x_phi, 60.f) - 30.f), x_phi_blend);
-        // printf("cos:%f\tsin:%f\tphi:%f\tphi':%f\tphi-blend:%f\n", cos_phi_i, sin_phi_i, x_phi, dr::rad_to_deg(acos(cos_phi_i)), x_phi_blend);
+        // printf("phi:%f\tphi:%f\tphimod:%f\tphimodabs30:%f\tblend:%f\n",dr::rad_to_deg(dr::acos(cos_phi_i)), x_phi, fmod(x_phi, 60.f), dr::abs(fmod(x_phi, 60.f) - 30.f), x_phi_blend);
+        // printf("cos:%f\tsin:%f\tphi:%f\tphi':%f\tphi-blend:%f\n", cos_phi_i, sin_phi_i, x_phi, dr::rad_to_deg(dr::acos(cos_phi_i)), x_phi_blend);
         // printf("theta:%f\tphi':%f\tval:%f\n", x, x_phi_blend, x_phi_blend*val_upper + (1.f-x_phi_blend)*val_lower);
         return x_phi_blend*val_upper + (1.f-x_phi_blend)*val_lower;
     }
@@ -304,19 +304,19 @@ public:
                 Vector3f wio, wv1o, wv2o, wv3o, wv4o, woo;
                 std::tie(wii, wv1i, wv2i, wv3i, wv4i, woi) = getPath(wi, ni, n1, n2, n3, no);
                 std::tie(woo, wv4o, wv3o, wv2o, wv1o, wio) = getPath(wo, no, n3, n2, n1, ni);
-                this->mui  = normalize(wii - wio);
-                this->muv1 = normalize(wv1i - wv1o);
-                this->muv2 = normalize(wv2i - wv2o);
-                this->muv3 = normalize(wv3i - wv3o);
-                this->muv4 = normalize(wv4i - wv4o);
-                this->muo  = normalize(woi - woo);
+                this->mui  = dr::normalize(wii - wio);
+                this->muv1 = dr::normalize(wv1i - wv1o);
+                this->muv2 = dr::normalize(wv2i - wv2o);
+                this->muv3 = dr::normalize(wv3i - wv3o);
+                this->muv4 = dr::normalize(wv4i - wv4o);
+                this->muo  = dr::normalize(woi - woo);
 
                 // 平均経路基準の法線ベクトル
-                this->mi = normalize(mui*ea - muv1*em);
-                this->m1 = normalize(-muv1 + muv2);
-                this->m2 = normalize(-muv2 + muv3);
-                this->m3 = normalize(-muv3 + muv4);
-                this->mo = normalize(muv4*em - muo*ea);
+                this->mi = dr::normalize(mui*ea - muv1*em);
+                this->m1 = dr::normalize(-muv1 + muv2);
+                this->m2 = dr::normalize(-muv2 + muv3);
+                this->m3 = dr::normalize(-muv3 + muv4);
+                this->mo = dr::normalize(muv4*em - muo*ea);
                 
                 this->pathProb = getProb();
             }
@@ -330,30 +330,30 @@ public:
                 v2 = reflect(-v1, n1);
                 v3 = reflect(-v2, n2);
                 v4 = reflect(-v3, n3);
-                auto [ro, cos_theta_o, eta_ito, eta_tio] = fresnel(dot(-v4, n), Float(reta));
+                auto [ro, cos_theta_o, eta_ito, eta_tio] = fresnel(dr::dot(-v4, n), Float(reta));
                 vo = refract(-v4, n, cos_theta_o, eta_tio);
             
                 return std::forward_as_tuple(vi, v1, v2, v3, v4, vo);
             }
             // class - rotations
             Float mag(Normal3f n) const {
-                return sqrt(n.x()*n.x() + n.y()*n.y() + n.z()*n.z());
+                return dr::sqrt(n.x()*n.x() + n.y()*n.y() + n.z()*n.z());
             }
             Normal3f rotateNormal(const Normal3f n, const Normal3f from, const Normal3f to) const {
-                Normal3f fromNorm = normalize(from);
-                Normal3f toNorm = normalize(to);
-                Normal3f rotateAxis = normalize(cross(fromNorm, toNorm));
-                Float s = mag(cross(fromNorm, toNorm));
-                Float c = dot(fromNorm, toNorm);
-                return c*n + (1-c)*dot(n,rotateAxis)*rotateAxis +s*cross(rotateAxis,n);
+                Normal3f fromNorm = dr::normalize(from);
+                Normal3f toNorm = dr::normalize(to);
+                Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
+                Float s = mag(dr::cross(fromNorm, toNorm));
+                Float c = dr::dot(fromNorm, toNorm);
+                return c*n + (1-c)*dr::dot(n,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,n);
             }
             Vector3f rotateVector(const Vector3f v, const Normal3f from, const Normal3f to) const {
-                Normal3f fromNorm = normalize(from);
-                Normal3f toNorm = normalize(to);
-                Normal3f rotateAxis = normalize(cross(fromNorm, toNorm));
-                Float s = mag(cross(fromNorm, toNorm));
-                Float c = dot(fromNorm, toNorm);
-                return c*v + (1-c)*dot(v,rotateAxis)*rotateAxis +s*cross(rotateAxis,v);
+                Normal3f fromNorm = dr::normalize(from);
+                Normal3f toNorm = dr::normalize(to);
+                Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
+                Float s = mag(dr::cross(fromNorm, toNorm));
+                Float c = dr::dot(fromNorm, toNorm);
+                return c*v + (1-c)*dr::dot(v,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,v);
             }
 
             // class - weight
@@ -364,15 +364,15 @@ public:
                 Mask valid = true;
 
                 // 1st surface
-                Float inner_1st_n1 = dr::clamp(dot(-muv1, m1), 0.f, 1.f);
-                Float inner_1st_n2 = dr::clamp(dot(-muv1, m2), 0.f, 1.f);
-                Float inner_1st_n3 = dr::clamp(dot(-muv1, m3), 0.f, 1.f);
+                Float inner_1st_n1 = dr::clamp(dr::dot(-muv1, m1), 0.f, 1.f);
+                Float inner_1st_n2 = dr::clamp(dr::dot(-muv1, m2), 0.f, 1.f);
+                Float inner_1st_n3 = dr::clamp(dr::dot(-muv1, m3), 0.f, 1.f);
                 Float invDenominator1st = 1.f / (inner_1st_n1 + inner_1st_n2 + inner_1st_n3);
 
                 prob = prob * inner_1st_n1*invDenominator1st;
 
-                Float inner_2nd_n2 = dr::clamp(dot(-muv2, m2), 0.f, 1.f);
-                Float inner_2nd_n3 = dr::clamp(dot(-muv2, m3), 0.f, 1.f);
+                Float inner_2nd_n2 = dr::clamp(dr::dot(-muv2, m2), 0.f, 1.f);
+                Float inner_2nd_n3 = dr::clamp(dr::dot(-muv2, m3), 0.f, 1.f);
                 Float invDenominator2nd = 1.f / (inner_2nd_n2 + inner_2nd_n3);
                 
                 prob = prob * inner_2nd_n2*invDenominator2nd;
@@ -385,9 +385,9 @@ public:
 
             // class - ERA
             Float ERA(const Float cos_theta_i, const Float sin_phi_i, const Float cos_phi_i) const {
-            Float x = dr::rad_to_deg(acos(abs(cos_theta_i)));
-            Float x_phi = dr::mulsign(dr::rad_to_deg(acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
-            Float x_phi_blend = abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
+            Float x = dr::rad_to_deg(dr::acos(dr::abs(cos_theta_i)));
+            Float x_phi = dr::mulsign(dr::rad_to_deg(dr::acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
+            Float x_phi_blend = dr::abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
             Float val_upper = ERA_upperBoundary(x);
             Float val_lower = ERA_lowerBoundary(x);
             return x_phi_blend*val_upper + (1.f-x_phi_blend)*val_lower;
@@ -421,8 +421,8 @@ public:
 
             // Walter's trick
             if (unlikely(!sample_visible)) {
-                distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(Frame3f::cos_theta(si.wi))));
-                distr_internal.scale_alpha(1.2f - .2f * sqrt(abs(Frame3f::cos_theta(si.wi))));
+                distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(Frame3f::cos_theta(si.wi))));
+                distr_internal.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(Frame3f::cos_theta(si.wi))));
             }
 
             // D
@@ -435,11 +435,11 @@ public:
             // F
             dr::Complex<UnpolarizedSpectrum> base_eta_k(eta_base->eval(si, active),
                                                     k_base->eval(si, active));
-            Float Fi = std::get<0>(fresnel(dot(-mui, mi), Float(reta)));
-            auto F1 = fresnel_conductor(UnpolarizedSpectrum(dot(-muv1, m1)), base_eta_k);
-            auto F2 = fresnel_conductor(UnpolarizedSpectrum(dot(-muv2, m2)), base_eta_k);
-            auto F3 = fresnel_conductor(UnpolarizedSpectrum(dot(-muv3, m3)), base_eta_k);
-            Float Fo = std::get<0>(fresnel(dot(muo, mo), Float(reta)));
+            Float Fi = std::get<0>(fresnel(dr::dot(-mui, mi), Float(reta)));
+            auto F1 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-muv1, m1)), base_eta_k);
+            auto F2 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-muv2, m2)), base_eta_k);
+            auto F3 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-muv3, m3)), base_eta_k);
+            Float Fo = std::get<0>(fresnel(dr::dot(muo, mo), Float(reta)));
             // incorrect Path check
             // printf("(%f:  %f, %f, %f, %f, %f)\n", pathProb, Fi, F1, F2, F3, Fo);
             Mask incorrectRRpath = !isfinite(Fo);
@@ -457,11 +457,11 @@ public:
             Float Go = distr_surface.G(-muv4, muo, mo);
 
             // J
-            Float Ji = abs(ea*ea*dot(mui, mi))*abs(dot(muv1, mi)) / (abs(dot(mui, ni))*abs(dot(muv1, ni)) * dr::sqr(ea*dot(-mui,mi) + em*dot(muv1,mi)));
-            Float J1 = 0.25f / (abs(dot(muv1,n1)*dot(muv2,n1)));
-            Float J2 = 0.25f / (abs(dot(muv2,n2)*dot(muv3,n2)));
-            Float J3 = 0.25f / (abs(dot(muv3,n3)*dot(muv4,n3)));
-            Float Jo = abs(em*em*dot(muv4, mo))*abs(dot(muo, mo)) / (abs(dot(muv4, no))*abs(dot(muo, no)) * dr::sqr(em*dot(-muv4,mo) + ea*dot(muo,mo)));
+            Float Ji = dr::abs(ea*ea*dr::dot(mui, mi))*dr::abs(dot(muv1, mi)) / (dr::abs(dr::dot(mui, ni))*dr::abs(dr::dot(muv1, ni)) * dr::sqr(ea*dr::dot(-mui,mi) + em*dr::dot(muv1,mi)));
+            Float J1 = 0.25f / (dr::abs(dr::dot(muv1,n1)*dr::dot(muv2,n1)));
+            Float J2 = 0.25f / (dr::abs(dr::dot(muv2,n2)*dr::dot(muv3,n2)));
+            Float J3 = 0.25f / (dr::abs(dr::dot(muv3,n3)*dr::dot(muv4,n3)));
+            Float Jo = dr::abs(em*em*dr::dot(muv4, mo))*dr::abs(dr::dot(muo, mo)) / (dr::abs(dr::dot(muv4, no))*dr::abs(dr::dot(muo, no)) * dr::sqr(em*dr::dot(-muv4,mo) + ea*dr::dot(muo,mo)));
 
             // ERA
             Float era_cos_i = Frame3f::cos_theta(-muv1);
@@ -486,25 +486,25 @@ public:
             MicrofacetDistribution distr_internal(mType, alpha_internal_u->eval_1(si, active), alpha_internal_v->eval_1(si, active), sample_visible);
             // Walter's trick
             if (unlikely(!sample_visible)) {
-                distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(Frame3f::cos_theta(si.wi))));
-                distr_internal.scale_alpha(1.2f - .2f * sqrt(abs(Frame3f::cos_theta(si.wi))));
+                distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(Frame3f::cos_theta(si.wi))));
+                distr_internal.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(Frame3f::cos_theta(si.wi))));
             }
 
             // D
-            Float Di = distr_surface.pdf(abs(dot(mui, ni)), mi);
-            Float D1 = distr_internal.pdf(abs(dot(muv1, n1)), rotateNormal(m1, n1, ni));
-            Float D2 = distr_internal.pdf(abs(dot(muv2, n2)), rotateNormal(m2, n2, ni));
-            Float D3 = distr_internal.pdf(abs(dot(muv3, n3)), rotateNormal(m3, n3, ni));
-            Float Do = distr_surface.pdf(abs(dot(muv4, no)), mo);
+            Float Di = distr_surface.pdf(dr::abs(dr::dot(mui, ni)), mi);
+            Float D1 = distr_internal.pdf(dr::abs(dr::dot(muv1, n1)), rotateNormal(m1, n1, ni));
+            Float D2 = distr_internal.pdf(dr::abs(dr::dot(muv2, n2)), rotateNormal(m2, n2, ni));
+            Float D3 = distr_internal.pdf(dr::abs(dr::dot(muv3, n3)), rotateNormal(m3, n3, ni));
+            Float Do = distr_surface.pdf(dr::abs(dr::dot(muv4, no)), mo);
 
             // F
             dr::Complex<UnpolarizedSpectrum> base_eta_k(eta_base->eval(si, active),
                                                     k_base->eval(si, active));
-            Float Fi = std::get<0>(fresnel(dot(-mui, mi), Float(reta)));
+            Float Fi = std::get<0>(fresnel(dr::dot(-mui, mi), Float(reta)));
             Float F1 = 1.f;
             Float F2 = 1.f;
             Float F3 = 1.f;
-            Float Fo = std::get<0>(fresnel(dot(muo, mo), Float(reta)));
+            Float Fo = std::get<0>(fresnel(dr::dot(muo, mo), Float(reta)));
             // incorrect Path check
             Mask incorrectRRpath = !isfinite(Fo);
             F1 = dr::select(incorrectRRpath, 0.f, F1);
@@ -513,11 +513,11 @@ public:
             Fo = dr::select(incorrectRRpath, 0.f, Fo);
 
             // J
-            Float Ji = em*em*abs(dot(muv1, mi)) / dr::sqr(ea*dot(-mui,mi) + em*dot(muv1,mi));
-            Float J1 = 0.25f / abs(dot(muv2,n1));
-            Float J2 = 0.25f / abs(dot(muv3,n2));
-            Float J3 = 0.25f / abs(dot(muv4,n3));
-            Float Jo = ea*ea*abs(dot(muo, mo)) / dr::sqr(em*dot(-muv4,mo) + ea*dot(muo,mo));
+            Float Ji = em*em*dr::abs(dr::dot(muv1, mi)) / dr::sqr(ea*dr::dot(-mui,mi) + em*dr::dot(muv1,mi));
+            Float J1 = 0.25f / dr::abs(dr::dot(muv2,n1));
+            Float J2 = 0.25f / dr::abs(dr::dot(muv3,n2));
+            Float J3 = 0.25f / dr::abs(dr::dot(muv4,n3));
+            Float Jo = ea*ea*dr::abs(dr::dot(muo, mo)) / dr::sqr(em*dr::dot(-muv4,mo) + ea*dr::dot(muo,mo));
 
             // ERA
             Float era_cos_i = Frame3f::cos_theta(-muv1);
@@ -577,13 +577,13 @@ public:
         active &= cos_theta_i != 0.f;
         
         if (unlikely(!m_sample_visible)) {  // Walter's trick
-            sample_distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(cos_theta_i)));
-            sample_distr_internal.scale_alpha(1.2f - .2f * sqrt(abs(cos_theta_i)));
+            sample_distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
+            sample_distr_internal.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
         }
 
         // 最初の表面
         auto [mi, Di] = sample_distr_surface.sample(dr::mulsign(si.wi, cos_theta_i), sample2);
-        auto [r_i, cos_theta_v1, eta_i_v1, eta_v1_i] = fresnel(dot(si.wi, mi), Float(m_eta));
+        auto [r_i, cos_theta_v1, eta_i_v1, eta_v1_i] = fresnel(dr::dot(si.wi, mi), Float(m_eta));
         Float Fi = r_i;
         Vector3f wv1 = refract(si.wi, mi, cos_theta_v1, eta_v1_i);
 
@@ -628,7 +628,7 @@ public:
             r2 = rand2(rng);
             std::tie(m1, D1) = sample_distr_internal.sample(rotateVector(-wv1, n1, n), r2);
             m1 = rotateVector(m1, n, n1);
-            F1 = fresnel_conductor(UnpolarizedSpectrum(dot(-wv1, m1)), base_eta_k);
+            F1 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-wv1, m1)), base_eta_k);
             wv2 = reflect(-wv1, m1);
             // printf("%f, %f, %f, %f, %f\n", mag(wv1), mag(rotateVector(-wv1, n1, n)), mag(std::get<0>(sample_distr_internal.sample(rotateVector(-wv1, n1, n), r2))), mag(m1), mag(wv2));
 
@@ -636,21 +636,21 @@ public:
             r2 = rand2(rng);
             std::tie(m2, D2) = sample_distr_internal.sample(rotateVector(-wv2, n2, n), r2);
             m2 = rotateVector(m2, n, n2);
-            F2 = fresnel_conductor(UnpolarizedSpectrum(dot(-wv2, m2)), base_eta_k);
+            F2 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-wv2, m2)), base_eta_k);
             wv3 = reflect(-wv2, m2);
 
             // n3反射
             r2 = rand2(rng);
             std::tie(m3, D3) = sample_distr_internal.sample(rotateVector(-wv3, n3, n), r2);
             m3 = rotateVector(m3, n, n3);
-            F3 = fresnel_conductor(UnpolarizedSpectrum(dot(-wv3, m3)), base_eta_k);
+            F3 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-wv3, m3)), base_eta_k);
             wv4 = reflect(-wv3, m3);
 
             // n透過
             Float eta_v4_o, eta_o_v4, cos_theta_o;
             r2 = rand2(rng);
             std::tie(mo, Do) = sample_distr_surface.sample(wv4, r2);
-            std::tie(Fo, cos_theta_o, eta_v4_o, eta_o_v4) = fresnel(dot(-wv4, mo), Float(m_eta));
+            std::tie(Fo, cos_theta_o, eta_v4_o, eta_o_v4) = fresnel(dr::dot(-wv4, mo), Float(m_eta));
             wo_rr = refract(-wv4, mo, cos_theta_o, eta_o_v4);
             // printf("(%f, %f, %f)check: rotate from(%f, %f, %f)to(%f, %f, %f) by <%f, %f, %f>\n", m2.x(), m2.y(), m2.z(), -wv2.x(), -wv2.y(), -wv2.z(), rotateVector(-wv2, n2, n).x(), rotateVector(-wv2, n2, n).y(), rotateVector(-wv2, n2, n).z(), n2.x(), n2.y(), n2.z());
             // printf("(%f, %f, %f, %f, %f, %f)  [%f, %f, %f, %f, %f]\n", 
@@ -707,7 +707,7 @@ public:
         if (dr::any_or<true>(selected_r)) {
             // printf("r");
             bs.wo[selected_r] = reflect(si.wi, mi);
-            bs.pdf = dr::select(selected_r, Fi*Di*dr::rcp(4*dot(si.wi,mi)), bs.pdf);
+            bs.pdf = dr::select(selected_r, Fi*Di*dr::rcp(4*dr::dot(si.wi,mi)), bs.pdf);
             bs.eta = 1.f;
             bs.sampled_type = dr::select(selected_r, UInt32(+BSDFFlags::GlossyReflection), bs.sampled_type);
             bs.sampled_component = dr::select(selected_r, UInt32(0), bs.sampled_component);
@@ -715,7 +715,7 @@ public:
             if (likely(m_sample_visible)) {
                 weight_r = distr_surface.smith_g1(bs.wo, mi);
             } else {
-                weight_r = distr_surface.G(si.wi, bs.wo, mi) * dot(si.wi, mi) /
+                weight_r = distr_surface.G(si.wi, bs.wo, mi) * dr::dot(si.wi, mi) /
                         (cos_theta_i * Frame3f::cos_theta(mi));
             }
             weight = dr::select(selected_r, weight_r, weight);
@@ -732,11 +732,11 @@ public:
             bs.sampled_component = dr::select(selected_rr, UInt32(1), bs.sampled_component);
             Spectrum weight_rr = 0.f;
             // ヤコビアン(bs.pdf)
-            Float dwmi_dwi = dr::sqr(m_eta_air)*abs(dot(si.wi, mi)) / dr::sqr(m_eta_air*dot(si.wi, mi) + m_eta_mat*dot(wv1, mi));
-            Float dwm1_dwv1 = dr::rcp(4.f * abs(dot(-wv1, m1)));
-            Float dwm2_dwv2 = dr::rcp(4.f * abs(dot(-wv2, m2)));
-            Float dwm3_dwv3 = dr::rcp(4.f * abs(dot(-wv3, m3)));
-            Float dwmo_dwv4 = dr::sqr(m_eta_air)*abs(dot(wo_rr, mo)) / dr::sqr(m_eta_mat*dot(-wv4, mo) + m_eta_air*dot(wo_rr, mo));
+            Float dwmi_dwi = dr::sqr(m_eta_air)*dr::abs(dr::dot(si.wi, mi)) / dr::sqr(m_eta_air*dr::dot(si.wi, mi) + m_eta_mat*dr::dot(wv1, mi));
+            Float dwm1_dwv1 = dr::rcp(4.f * dr::abs(dr::dot(-wv1, m1)));
+            Float dwm2_dwv2 = dr::rcp(4.f * dr::abs(dr::dot(-wv2, m2)));
+            Float dwm3_dwv3 = dr::rcp(4.f * dr::abs(dr::dot(-wv3, m3)));
+            Float dwmo_dwv4 = dr::sqr(m_eta_air)*dr::abs(dr::dot(wo_rr, mo)) / dr::sqr(m_eta_mat*dr::dot(-wv4, mo) + m_eta_air*dr::dot(wo_rr, mo));
             // bs.pdf = dr::select(selected_rr, 1.f, bs.pdf);
             bs.pdf = dr::select(selected_rr, (1.f-Fi)*(1.f-Fo) * dr::clamp(Di*D1*D2*D3*Do, 0.f, 1000000000000.f) * dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * pathProb * era, bs.pdf);
             // bs.pdf = dr::select(selected_rr, (1.f-Fi)*F1*F2*F3*(1.f-Fo) *  dwmi_dwi*dwm1_dwv1*dwm2_dwv2*dwm3_dwv3*dwmo_dwv4 * Di*D1*D2*D3*Do * pathProb, bs.pdf);
@@ -763,8 +763,8 @@ public:
                             distr_internal.G(rotateVector(-wv2, n2, n), rotateVector(wv3, n2, n), rotateNormal(m2, n2, n)) *
                             distr_internal.G(rotateVector(-wv3, n3, n), rotateVector(wv4, n3, n), rotateNormal(m3, n3, n)) *
                             distr_surface.G(-wv4, wo_rr, mo) *
-                            abs(dot(si.wi,mi)*dot(wv1,m1)*dot(wv2,m2)*dot(wv3,m3)*dot(wv4,mo)) *
-                            dr::rcp(cos_theta_i*cos_theta_v1 * dot(wv1,n1)*dot(wv2,n1) * dot(wv2,n2)*dot(wv3,n2) * dot(wv3,n3)*dot(wv4,n3) * dot(wv4,n)*cos_theta_o);
+                            dr::abs(dr::dot(si.wi,mi)*dr::dot(wv1,m1)*dr::dot(wv2,m2)*dr::dot(wv3,m3)*dr::dot(wv4,mo)) *
+                            dr::rcp(cos_theta_i*cos_theta_v1 * dr::dot(wv1,n1)*dr::dot(wv2,n1) * dr::dot(wv2,n2)*dr::dot(wv3,n2) * dr::dot(wv3,n3)*dr::dot(wv4,n3) * dr::dot(wv4,n)*cos_theta_o);
             }
             weight = dr::select(selected_rr, weight_rr, weight);
             // printf("[%f, %f, %f, %f, %f -> %f], %f\n", distr_surface.smith_g1(wv1, mi),
@@ -842,8 +842,8 @@ public:
         Spectrum brdf_rr = 0.f;
         Spectrum brdf_d  = 0.f;
         // 表面
-        Vector3f m = normalize(si.wi + wo);
-        Float F = std::get<0>(fresnel(dot(si.wi, m), Float(m_eta)));
+        Vector3f m = dr::normalize(si.wi + wo);
+        Float F = std::get<0>(fresnel(dr::dot(si.wi, m), Float(m_eta)));
         Float G = distr_surface.G(si.wi, wo, m);
         Float D = distr_surface.eval(m);
         brdf_r = F*G*D* 0.25f*dr::rcp(cos_theta_i); // cos_theta_o打ち消し
@@ -892,14 +892,14 @@ public:
                                                 m_sample_visible);
         // Walter's trick
         if (unlikely(!m_sample_visible))
-            distr_surface.scale_alpha(1.2f - .2f * sqrt(abs(Frame3f::cos_theta(si.wi))));
+            distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(Frame3f::cos_theta(si.wi))));
         
         Float prob_r  = 0.f;
         Float prob_rr = 0.f;
         Float prob_d  = 0.f;
         // 表面
-        Vector3f m = normalize(si.wi + wo);
-        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dot(si.wi, m), Float(m_eta))) * 0.25f *dr::rcp(abs_dot(si.wi, m));
+        Vector3f m = dr::normalize(si.wi + wo);
+        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dr::dot(si.wi, m), Float(m_eta))) * 0.25f *dr::rcp(dr::abs_dot(si.wi, m));
 
         // 再帰・拡散
         // Complex refractive index
@@ -959,14 +959,14 @@ public:
         Float prob_r  = 0.f;
         Float prob_rr = 0.f;
         Float prob_d  = 0.f;
-        Vector3f m = normalize(si.wi + wo);
+        Vector3f m = dr::normalize(si.wi + wo);
 
         // surface
-        Float F = std::get<0>(fresnel(dot(si.wi, m), Float(m_eta)));
+        Float F = std::get<0>(fresnel(dr::dot(si.wi, m), Float(m_eta)));
         Float G = distr_surface.G(si.wi, wo, m);
         Float D = distr_surface.eval(m);
         brdf_r = F*G*D* 0.25f*dr::rcp(cos_theta_i); // cos_theta_o打ち消し
-        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dot(si.wi, m), Float(m_eta))) * 0.25f *dr::rcp(abs_dot(si.wi, m));
+        prob_r = distr_surface.pdf(si.wi, m) * std::get<0>(fresnel(dr::dot(si.wi, m), Float(m_eta))) * 0.25f *dr::rcp(dr::abs_dot(si.wi, m));
 
         //retroreflect / diffuse
         Path p[12] = {
