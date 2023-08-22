@@ -737,7 +737,7 @@ public:
             // printf("R");
             // printV(si.wi);printV(wo_rr); printf("\n");
             Vector3f r3 = rand3c(rng);
-            si.p[selected_rr] += Vector3f(randX*r3.x(), randY*r3.y(), randZ*r3.z());
+            si.p[selected_rr] += rotateVector(Vector3f(randX*r3.x(), randY*r3.y(), randZ*r3.z()), Normal3f(0.f, 0.f, 1.f), si.n);
             bs.wo[selected_rr] = wo_rr;
             bs.eta = dr::select(selected_rr, 1.f, bs.eta);
             bs.sampled_type = dr::select(selected_rr, UInt32(+BSDFFlags::GlossyTransmission | +BSDFFlags::GlossyReflection), bs.sampled_type);
@@ -1067,6 +1067,7 @@ private:
     ref<Texture> m_surface_reflectance;
     ref<Texture> m_internal_reflectance;
     Float randX, randY, randZ;
+
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector, BSDF)

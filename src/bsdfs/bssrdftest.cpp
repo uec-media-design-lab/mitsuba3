@@ -47,6 +47,18 @@ public:
         return sample3;
     }
 
+    Float mag(Normal3f n) const {
+        return dr::sqrt(n.x()*n.x() + n.y()*n.y() + n.z()*n.z());
+    }
+    Vector3f rotateVector(const Vector3f v, const Normal3f from, const Normal3f to) const {
+        Normal3f fromNorm = normalize(from);
+        Normal3f toNorm = normalize(to);
+        Normal3f rotateAxis = normalize(cross(fromNorm, toNorm));
+        Float s = mag(cross(fromNorm, toNorm));
+        Float c = dot(fromNorm, toNorm);
+        return c*v + (1-c)*dot(v,rotateAxis)*rotateAxis +s*cross(rotateAxis,v);
+    }
+
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              SurfaceInteraction3f &si,
                                              Float sample1,
@@ -65,10 +77,13 @@ public:
                      !ctx.is_enabled(BSDFFlags::DiffuseReflection)))
             return { bs, 0.f };
         // printf("<%f, %f, %f>\t", si.p.x(), si.p.y(), si.p.z());
+        // printf("<%f, %f, %f>\t", si.n.x(), si.n.y(), si.n.z());
+
         
         Vector3f c = Vector3f(deltaX, deltaY, deltaZ);
         r3 = rand3(rng);
-        Vector3f randShift = Vector3f(randX*(r3.x()-0.5), randY*(r3.y()), randZ*(r3.z()-0.5));
+        Vector3f randShift_local = Vector3f(randX*(r3.x()-0.5), randY*(r3.y()), randZ*(r3.z()-0.5));
+        Vector3f randShift = rotateVector(randShift_local, Normal3f(0.f, 0.f, 1.f), si.n);
         si.p += c + randShift;
         bs.wo = reflect(si.wi);
         bs.pdf = 1.f;
