@@ -77,6 +77,7 @@ public:
     }
 
     void traverse(TraversalCallback *callback) override {
+        Base::traverse(callback);
         callback->put_object("radiance", m_radiance.get(), +ParamFlags::Differentiable);
         callback->put_parameter("coefficient", m_coefficient, +ParamFlags::Differentiable);
     }

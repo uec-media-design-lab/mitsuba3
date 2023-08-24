@@ -1,4 +1,5 @@
 #include <mitsuba/core/filesystem.h>
+#include <mitsuba/core/fresolver.h>
 #include <mitsuba/core/xml.h>
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/core/properties.h>
@@ -109,13 +110,25 @@ MI_PY_EXPORT(xml) {
     m.def(
         "load_dict",
         [](const py::dict dict, bool parallel) {
+            // Make a backup copy of the FileResolver, which will be restored after parsing
+            ref<FileResolver> fs_backup = Thread::thread()->file_resolver();
+            Thread::thread()->set_file_resolver(new FileResolver(*fs_backup));
+
             DictParseContext ctx;
             ctx.parallel = parallel;
-            parse_dictionary<Float, Spectrum>(ctx, "__root__", dict);
-            std::unordered_map<std::string, Task*> task_map;
-            instantiate_node<Float, Spectrum>(ctx, "__root__", task_map);
-            auto objects = mitsuba::xml::detail::expand_node(ctx.instances["__root__"].object);
-            return single_object_or_list(objects);
+            ctx.env = ThreadEnvironment();
+
+            try {
+                parse_dictionary<Float, Spectrum>(ctx, "__root__", dict);
+                std::unordered_map<std::string, Task*> task_map;
+                instantiate_node<Float, Spectrum>(ctx, "__root__", task_map);
+                auto objects = mitsuba::xml::detail::expand_node(ctx.instances["__root__"].object);
+                Thread::thread()->set_file_resolver(fs_backup.get());
+                return single_object_or_list(objects);
+            } catch(...) {
+                Thread::thread()->set_file_resolver(fs_backup.get());
+                throw;
+            }
         },
         "dict"_a, "parallel"_a=true,
         R"doc(Load a Mitsuba scene or object from an Python dictionary
@@ -176,7 +189,7 @@ ref<Object> create_texture_from(const py::dict &dict, bool within_emitter) {
     if (type == "rgb") {
         if (dict.size() != 2) {
             Throw("'rgb' dictionary should always contain 2 entries "
-                    "('type' and 'value'), got %u.", dict.size());
+                  "('type' and 'value'), got %u.", dict.size());
         }
         // Read info from the dictionary
         Properties::Color3f color(0.f);
@@ -193,7 +206,7 @@ ref<Object> create_texture_from(const py::dict &dict, bool within_emitter) {
     } else if (type == "spectrum") {
         if (dict.size() != 2) {
             Throw("'spectrum' dictionary should always contain 2 "
-                    "entries ('type' and 'value'), got %u.", dict.size());
+                  "entries ('type' and 'value'), got %u.", dict.size());
         }
         // Read info from the dictionary
         Properties::Float const_value(1);
@@ -283,6 +296,12 @@ void parse_dictionary(DictParseContext &ctx,
         SET_PROPS(ScalarArray3f, ScalarArray3f, set_array3f);
         SET_PROPS(ScalarTransform4f, ScalarTransform4f, set_transform);
 
+        if (key.find('.') != std::string::npos) {
+            Throw("The object key '%s' contains a '.' character, which is "
+                  "already used as a delimiter in the object path in the scene."
+                  " Please use '_' instead.", key);
+        }
+
         // Parse nested dictionary
         if (py::isinstance<py::dict>(value)) {
             py::dict dict2 = value.template cast<py::dict>();
@@ -290,6 +309,26 @@ void parse_dictionary(DictParseContext &ctx,
 
             if (type2 == "spectrum" || type2 == "rgb") {
                 props.set_object(key, create_texture_from<Float, Spectrum>(dict2, within_emitter));
+                continue;
+            }
+
+            if (type2 == "resources") {
+                ref<FileResolver> fs = Thread::thread()->file_resolver();
+                std::string path = dict2["path"].template cast<std::string>();
+                fs::path resource_path(path);
+                if (!resource_path.is_absolute()) {
+                    // First try to resolve it starting in the Python file directory
+                    py::module_ inspect = py::module_::import("inspect");
+                    py::object filename = inspect.attr("getfile")(inspect.attr("currentframe")());
+                    fs::path current_file(filename.template cast<std::string>());
+                    resource_path = current_file.parent_path() / resource_path;
+                    // Otherwise try to resolve it with the FileResolver
+                    if (!fs::exists(resource_path))
+                        resource_path = fs->resolve(path);
+                }
+                if (!fs::exists(resource_path))
+                    Throw("path: folder %s not found", resource_path);
+                fs->prepend(resource_path);
                 continue;
             }
 
@@ -433,6 +472,10 @@ Task *instantiate_node(DictParseContext &ctx,
         if (eptr)
             std::rethrow_exception(eptr);
         instantiate();
+#if defined(MI_ENABLE_LLVM) || defined(MI_ENABLE_CUDA)
+        if (backend && ctx.parallel)
+            jit_new_scope((JitBackend) backend);
+#endif
         return nullptr;
     } else {
         if (ctx.parallel) {
