@@ -379,7 +379,7 @@ public:
                 
                 valid = Mask(inner_1st_n1 + inner_1st_n2 + inner_1st_n3 > 0.f)&& valid;
                 valid = Mask(inner_2nd_n2 + inner_2nd_n3>0.f)&& valid;
-                valid = Mask(isfinite(prob)) && valid;
+                valid = Mask(dr::isfinite(prob)) && valid;
                 return dr::select(valid, prob, 0.f);
             }
 
@@ -442,12 +442,12 @@ public:
             Float Fo = std::get<0>(fresnel(dr::dot(muo, mo), Float(reta)));
             // incorrect Path check
             // printf("(%f:  %f, %f, %f, %f, %f)\n", pathProb, Fi, F1, F2, F3, Fo);
-            Mask incorrectRRpath = !isfinite(Fo);
-            Fi = dr::select(incorrectRRpath, 0.f, Fi);
-            F1 = dr::select(incorrectRRpath, 0.f, F1);
-            F2 = dr::select(incorrectRRpath, 0.f, F2);
-            F3 = dr::select(incorrectRRpath, 0.f, F3);
-            Fo = dr::select(incorrectRRpath, 0.f, Fo);
+            Mask correctRRpath = dr::isfinite(Fo);
+            Fi = dr::select(correctRRpath, Fi, 0.f);
+            F1 = dr::select(correctRRpath, F1, 0.f);
+            F2 = dr::select(correctRRpath, F2, 0.f);
+            F3 = dr::select(correctRRpath, F3, 0.f);
+            Fo = dr::select(correctRRpath, Fo, 0.f);
 
             // G
             Float Gi = distr_surface.G(-mui, muv1, mi);
@@ -470,12 +470,12 @@ public:
 
             // RetroReflection
             // val_rr = pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * pow(Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo, 0.2);
-            val_rr = dr::select(!incorrectRRpath, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era, 0.f);
+            val_rr = dr::select(correctRRpath, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era, 0.f);
             // printf("[P:%f, F:%f, G:%f, D:%f, J:%f]\n", pathProb, (1.f-Fi)*F1*F2*F3*(1.f-Fo), Gi*G1*G2*G3*Go, pow(Di*D1*D2*D3*Do, 0.2), Ji*J1*J2*J3*Jo);
 
             // Diffuse
             // diffuseFactorを除いた部分
-            val_d = dr::select(isfinite(pathProb), (1.f-Fi)* (era * pathProb * (1.f-F1*F2*F3*(1.f-Fo)) + (1.f-era)), 0.f);
+            val_d = dr::select(dr::isfinite(pathProb), (1.f-Fi)* (era * pathProb * (1.f-F1*F2*F3*(1.f-Fo)) + (1.f-era)), 0.f);
             return std::forward_as_tuple(val_rr, val_d);
         }
         std::tuple<Float, Float> pdf(const SurfaceInteraction3f &si, ref<Texture> alpha_surface_u, ref<Texture> alpha_surface_v, ref<Texture> alpha_internal_u, ref<Texture> alpha_internal_v, MicrofacetType mType, Mask active, bool sample_visible) const {
@@ -506,11 +506,11 @@ public:
             Float F3 = 1.f;
             Float Fo = std::get<0>(fresnel(dr::dot(muo, mo), Float(reta)));
             // incorrect Path check
-            Mask incorrectRRpath = !isfinite(Fo);
-            F1 = dr::select(incorrectRRpath, 0.f, F1);
-            F2 = dr::select(incorrectRRpath, 0.f, F2);
-            F3 = dr::select(incorrectRRpath, 0.f, F3);
-            Fo = dr::select(incorrectRRpath, 0.f, Fo);
+            Mask correctRRpath = dr::isfinite(Fo);
+            F1 = dr::select(correctRRpath, F1, 0.f);
+            F2 = dr::select(correctRRpath, F2, 0.f);
+            F3 = dr::select(correctRRpath, F3, 0.f);
+            Fo = dr::select(correctRRpath, Fo, 0.f);
 
             // J
             Float Ji = em*em*dr::abs(dr::dot(muv1, mi)) / dr::sqr(ea*dr::dot(-mui,mi) + em*dr::dot(muv1,mi));
@@ -525,7 +525,7 @@ public:
             Float era = ERA(era_cos_i, era_sin_phi, era_cos_phi);
 
             // RetroReflection
-            prob_rr = dr::select(!incorrectRRpath, 0.f, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era);
+            prob_rr = dr::select(correctRRpath, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era, 0.f);
 
             // Diffuse
             // diffuseFactorを除いた部分
@@ -663,11 +663,11 @@ public:
             //     n2.x(), n2.y(), n2.z(), m2.x(), m2.y(), m2.z());
         }
         // incorrectPath: 経路決定後、次の面には裏面からしか入射しない場合
-        Mask incorrectRRpath = !isfinite(Fo);
-        F1 = dr::select(incorrectRRpath, 0.f, F1);
-        F2 = dr::select(incorrectRRpath, 0.f, F2);
-        F3 = dr::select(incorrectRRpath, 0.f, F3);
-        Fo = dr::select(incorrectRRpath, 0.f, Fo);
+        Mask correctRRpath = dr::isfinite(Fo);
+        F1 = dr::select(correctRRpath, F1, 0.f);
+        F2 = dr::select(correctRRpath, F2, 0.f);
+        F3 = dr::select(correctRRpath, F3, 0.f);
+        Fo = dr::select(correctRRpath, Fo, 0.f);
 
         r1 = rand(rng);
 
@@ -676,7 +676,7 @@ public:
         auto [era_sin_phi, era_cos_phi] = Frame3f::sincos_phi(-wv1);
         Float era = ERA(era_cos_i, era_sin_phi, era_cos_phi);
 
-        selected_rr = !selected_r && (r1<=(1.f-Fi)*(1.f-Fo) * era) && !incorrectRRpath && active;
+        selected_rr = !selected_r && (r1<=(1.f-Fi)*(1.f-Fo) * era) && correctRRpath && active;
         selected_d = !selected_r && !selected_rr && active;
 
         // printf("[%f, %f, %f]", r1, Fi, (1.f-Fi)*F1*F2*F3*(1.f-Fo));
@@ -926,11 +926,11 @@ public:
         }
         // prob_d *= diffuseFactor * warp::square_to_cosine_hemisphere_pdf(wo);
         prob_d *= diffuseFactor;
-        Mask invalid = !isfinite(prob_r) || !isfinite(prob_rr) || !isfinite(prob_d);
+        Mask valid = dr::isfinite(prob_r) && dr::isfinite(prob_rr) && dr::isfinite(prob_d);
         // if (dr::any_or<true>(invalid)) { printf("invalid:[%f, %f, %f]\t", prob_d, prob_rr, prob_r);}
         // 足して返す
         // printf("[%f, %f, %f]\n", prob_r, prob_rr, prob_d);       
-        return dr::select(active && !invalid, prob_r + prob_rr + prob_d, 0.f);
+        return dr::select(active && valid, prob_r + prob_rr + prob_d, 0.f);
 
     }
 
@@ -999,10 +999,10 @@ public:
         brdf_r *= m_surface_reflectance->eval(si, active);
         brdf_rr *= m_surface_reflectance->eval(si, active)*m_surface_reflectance->eval(si, active);
         brdf_rr *= m_internal_reflectance->eval(si, active)*m_internal_reflectance->eval(si, active)*m_internal_reflectance->eval(si, active);
-        Mask invalid = !isfinite(prob_r) || !isfinite(prob_rr) || !isfinite(prob_d);
+        Mask valid = dr::isfinite(prob_r) && dr::isfinite(prob_rr) && dr::isfinite(prob_d);
 
         auto brdf = dr::select(active, brdf_d + brdf_rr + brdf_r, 0.f);
-        auto prob = dr::select(active && invalid, prob_r + prob_rr + prob_d, 0.f);
+        auto prob = dr::select(active && valid, prob_r + prob_rr + prob_d, 0.f);
 
         return {brdf, prob};
 
