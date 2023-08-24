@@ -257,9 +257,9 @@ public:
 
     // ERA
     Float ERA(const Float cos_theta_i, const Float sin_phi_i, const Float cos_phi_i) const {
-        Float x = dr::rad_to_deg(dr::acos(abs(cos_theta_i)));
+        Float x = dr::rad_to_deg(dr::acos(dr::abs(cos_theta_i)));
         Float x_phi = dr::mulsign(dr::rad_to_deg(dr::acos(cos_phi_i)), sin_phi_i) + 360.f;  // 0 -- 360 [deg]
-        Float x_phi_blend = abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
+        Float x_phi_blend = dr::abs(fmod(x_phi, 60.f) - 30.f) * 0.1f * 0.33333333333333333333f;
         Float val_upper = ERA_upperBoundary(x);
         Float val_lower = ERA_lowerBoundary(x);
         // printf("phi:%f\tphi:%f\tphimod:%f\tphimodabs30:%f\tblend:%f\n",dr::rad_to_deg(acos(cos_phi_i)), x_phi, fmod(x_phi, 60.f), abs(fmod(x_phi, 60.f) - 30.f), x_phi_blend);
@@ -879,7 +879,7 @@ public:
         // printf("(%f, %f, %f)\n", brdf_r, brdf_rr, brdf_d);
         // Mask invalid = !isfinite(brdf_d) || !isfinite(brdf_rr) || !isfinite(brdf_d);
         // if (dr::any_or<true>(invalid)) { printf("invalid:(%f, %f, %f)\t", brdf_d, brdf_rr, brdf_r);}
-        return (active, value, 0.f);
+        return value & active;
     }
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
