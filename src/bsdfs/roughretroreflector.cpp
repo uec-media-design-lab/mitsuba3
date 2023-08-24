@@ -457,7 +457,7 @@ public:
             Float Go = distr_surface.G(-muv4, muo, mo);
 
             // J
-            Float Ji = dr::abs(ea*ea*dr::dot(mui, mi))*dr::abs(dot(muv1, mi)) / (dr::abs(dr::dot(mui, ni))*dr::abs(dr::dot(muv1, ni)) * dr::sqr(ea*dr::dot(-mui,mi) + em*dr::dot(muv1,mi)));
+            Float Ji = dr::abs(ea*ea*dr::dot(mui, mi))*dr::abs(dr::dot(muv1, mi)) / (dr::abs(dr::dot(mui, ni))*dr::abs(dr::dot(muv1, ni)) * dr::sqr(ea*dr::dot(-mui,mi) + em*dr::dot(muv1,mi)));
             Float J1 = 0.25f / (dr::abs(dr::dot(muv1,n1)*dr::dot(muv2,n1)));
             Float J2 = 0.25f / (dr::abs(dr::dot(muv2,n2)*dr::dot(muv3,n2)));
             Float J3 = 0.25f / (dr::abs(dr::dot(muv3,n3)*dr::dot(muv4,n3)));
