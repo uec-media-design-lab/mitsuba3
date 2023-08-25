@@ -204,18 +204,22 @@ public:
     Normal3f rotateNormal(const Normal3f n, const Normal3f from, const Normal3f to) const {
         Normal3f fromNorm = dr::normalize(from);
         Normal3f toNorm = dr::normalize(to);
+        // if 2 axis are same, return value V
+        Mask normalsSame = (dr::dot(fromNorm, toNorm) == 1.f);
         Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
         Float s = mag(dr::cross(fromNorm, toNorm));
         Float c = dr::dot(fromNorm, toNorm);
-        return c*n + (1-c)*dr::dot(n,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,n);
+        return dr::select(normalsSame, n, c*n + (1-c)*dr::dot(n,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,n));
     }
     Vector3f rotateVector(const Vector3f v, const Normal3f from, const Normal3f to) const {
         Normal3f fromNorm = dr::normalize(from);
         Normal3f toNorm = dr::normalize(to);
+        // if 2 axis are same, return value V
+        Mask normalsSame = (dr::dot(fromNorm, toNorm) == 1.f);
         Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
         Float s = mag(dr::cross(fromNorm, toNorm));
         Float c = dr::dot(fromNorm, toNorm);
-        return c*v + (1-c)*dr::dot(v,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,v);
+        return dr::select(normalsSame, v, c*v + (1-c)*dr::dot(v,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,v));
     }
 
     // sampleRoute
@@ -352,18 +356,22 @@ public:
             Normal3f rotateNormal(const Normal3f n, const Normal3f from, const Normal3f to) const {
                 Normal3f fromNorm = dr::normalize(from);
                 Normal3f toNorm = dr::normalize(to);
+                // if 2 axis are same, return value V
+                Mask normalsSame = (dr::dot(fromNorm, toNorm) == 1.f);
                 Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
                 Float s = mag(dr::cross(fromNorm, toNorm));
                 Float c = dr::dot(fromNorm, toNorm);
-                return c*n + (1-c)*dr::dot(n,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,n);
+                return dr::select(normalsSame, n, c*n + (1-c)*dr::dot(n,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,n));
             }
             Vector3f rotateVector(const Vector3f v, const Normal3f from, const Normal3f to) const {
                 Normal3f fromNorm = dr::normalize(from);
                 Normal3f toNorm = dr::normalize(to);
+                // if 2 axis are same, return value V
+                Mask normalsSame = (dr::dot(fromNorm, toNorm) == 1.f);
                 Normal3f rotateAxis = dr::normalize(dr::cross(fromNorm, toNorm));
                 Float s = mag(dr::cross(fromNorm, toNorm));
                 Float c = dr::dot(fromNorm, toNorm);
-                return c*v + (1-c)*dr::dot(v,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,v);
+                return dr::select(normalsSame, v, c*v + (1-c)*dr::dot(v,rotateAxis)*rotateAxis +s*dr::cross(rotateAxis,v));
             }
 
             // class - weight
