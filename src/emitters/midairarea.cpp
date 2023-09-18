@@ -71,6 +71,8 @@ public:
     MI_IMPORT_BASE(Emitter, m_flags, m_shape, m_medium)
     MI_IMPORT_TYPES(Scene, Shape, Texture)
 
+    using FloatStorage = DynamicBuffer<Float>;
+
     MidAirAreaLight(const Properties &props) : Base(props) {
         if (props.has_property("to_world"))
             Throw("Found a 'to_world' transformation -- this is not allowed. "
@@ -78,6 +80,8 @@ public:
                   "shape.");
 
         m_radiance = props.texture_d65<Texture>("radiance", 1.f);
+
+        m_attenuation_table = dr::load<FloatStorage>(att_tbl, 10);
 
         m_flags = +EmitterFlags::Surface;
         if (m_radiance->is_spatially_varying())
@@ -94,22 +98,24 @@ public:
         MI_MASKED_FUNCTION(ProfilerPhase::EndpointEvaluate, active);
 
         // Calculate the angle between the incident direction and the normal
-        /// @todo: Consider that 45 degree is the angle where the attenuation rate is the smallest. 
         Float dp = Frame3f::cos_theta(si.wi);
         Float degree = dr::acos(dp) * 180 / dr::Pi<Float>;
-        degree = dr::abs(degree);
 
         // Ignore the attenuation when the angle is out of range
-        Mask is_multi_coeff = (ScalarFloat)10.0f <= degree || degree <= (ScalarFloat)60.0f;
+        degree += (ScalarFloat) 45.0f;
 
-        UInt32 i0 = dr::floor(degree / 5);
-        UInt32 i1 = i0 < UInt32(10) ? i0 + 1 : i0;
+        UInt32 i0 = dr::clamp(dr::floor(degree / 5), UInt32(0), UInt32(8));
+        UInt32 i1 = i0 + 1;
+
+        Float deg0 = Float (i0 * 5) + 10.0f;
+        Float deg1 = Float (i1 * 5) + 10.0f;
 
         // Select attenuation rate according to the angle
-        Float t = degree - (ScalarFloat)(i0 * 5) / 5; // Interpolation factor
-        Float att0 = dr::gather<Float32>(m_attenuation_table, i0, is_multi_coeff);
-        Float att1 = dr::gather<Float32>(m_attenuatoin_table, i1, is_multi_coeff);
+        Float att0 = (Float)dr::gather<Float32>(m_attenuation_table, i0);
+        Float att1 = (Float)dr::gather<Float32>(m_attenuation_table, i1);
+        Float t           = (degree - deg0) / (deg1 - deg0);
         Float attenuation = (1 - t) * att0 + t * att1; // Linear interpolation
+        //attenuation *= is_multi_coeff;
         
         // Calculate the radiance with attenuation according to the angle
         auto result = depolarizer<Spectrum>(m_radiance->eval(si, active) * attenuation) &
