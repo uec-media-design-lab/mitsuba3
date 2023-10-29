@@ -354,4 +354,15 @@ Float fresnel_diffuse_reflectance(Float eta) {
     return dr::select(eta < 1.f, approx_1, approx_2);
 }
 
+// Transmit ray to plane symmetric direction 
+template <typename Float>
+Vector<Float, 3> retro_transmit(const Vector<Float, 3>& wi, const Normal<Float, 3>& m){ 
+    return fmadd(Vector<Float, 3>(m), 2.f * dot(wi, m) - wi);
+}
+
+template <typename Float>
+Vector<Float, 3> retro_transmit(const Vector<Float, 3> &wi) {
+    return Vector<Float, 3>(wi.x(), wi.y(), -wi.z());
+}
+
 NAMESPACE_END(mitsuba)

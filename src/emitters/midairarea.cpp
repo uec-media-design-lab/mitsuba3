@@ -61,7 +61,7 @@ emitter shape and specify an :monosp:`area` instance as its child:
 // Attenuation rates in angles from 10 to 60 degrees with 5 degree intervals
 static constexpr float att_tbl[] = 
     {
-        0.f, 0.07058824f, 0.12156863f, 0.17254902f, 0.24705882f, 0.34117647f, 
+        0.f, 0.07058824f, 0.12156863f, 0.17254902f, 0.24705882f, 0.34117647f,
         0.42745098f, 0.52941176f, 0.56078431f, 0.44705882f, 0.33464567f
     };
 
@@ -115,7 +115,6 @@ public:
         Float att1 = (Float)dr::gather<Float32>(m_attenuation_table, i1);
         Float t           = (degree - deg0) / (deg1 - deg0);
         Float attenuation = (1 - t) * att0 + t * att1; // Linear interpolation
-        //attenuation *= is_multi_coeff;
         
         // Calculate the radiance with attenuation according to the angle
         auto result = depolarizer<Spectrum>(m_radiance->eval(si, active) * attenuation) &
