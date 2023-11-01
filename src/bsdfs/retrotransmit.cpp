@@ -15,7 +15,8 @@ public:
 
     RetroTransmit(const Properties& props) : Base(props)
     {
-        m_flags = BSDFFlags::DeltaTransmission;
+        m_flags = BSDFFlags::DeltaReflection | BSDFFlags::FrontSide |
+                  BSDFFlags::BackSide;
         dr::set_attr(this, "flags", m_flags);
         m_components.push_back(m_flags);
 
@@ -30,7 +31,7 @@ public:
     }
 
     void traverse(TraversalCallback* callback) override {
-        callback->put_object("eta", m_k.get(), ParamFlags::Differentiable);
+        callback->put_object("eta", m_eta.get(), +ParamFlags::Differentiable);
     }
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext& ctx,
@@ -50,7 +51,7 @@ public:
 
         bs.sampled_component = 0;
         bs.sampled_type      = +BSDFFlags::DeltaTransmission;
-        bs.wo                = retro_transmit(wi);
+        bs.wo                = retro_transmit(si.wi);
         bs.eta               = 1.0f;
         bs.pdf               = 1.f;
 
@@ -101,9 +102,10 @@ public:
             << "  retro_transmittance = "
             << string::indent(m_retro_transmittance) << std::endl
             << "]";
+        return oss.str();
     }
 
-    MI_DECRARE_CLASS()
+    MI_DECLARE_CLASS()
 private:
     ref<Texture> m_retro_transmittance;
     ref<Texture> m_eta;
