@@ -8,7 +8,10 @@
 #include <mitsuba/render/microfacet.h>
 #include <mitsuba/render/sampler.h>
 #include <mitsuba/core/traits.h>
-
+#include <iostream>
+#include <fstream>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -146,6 +149,31 @@ public:
         randX = props.texture<Texture>("rx", 0.f)->mean();
         randY = props.texture<Texture>("ry", 0.f)->mean();
         randZ = props.texture<Texture>("rz", 0.f)->mean();
+
+        // cornerCube size
+        cornerCubeSize = props.texture<Texture>("corner_size", 0.f)->mean();
+
+        // read LUT
+        std::ifstream file("RRshiftTensor.json");
+        if (!file.is_open()) {
+            std::cerr << "Error opening file." << std::endl;
+            // return 1;
+        }
+        json jsonData;
+        file >> jsonData;
+        // 4D tensor
+        for (const auto& dim1 : jsonData) {
+            std::vector<std::vector<std::vector<Float>>> dim2;
+            for (const auto& dim2Data : dim1) {
+                std::vector<std::vector<Float>> dim3;
+                for (const auto& dim3Data : dim2Data) {
+                    std::vector<Float> dim4 = dim3Data.get<std::vector<Float>>();
+                    dim3.push_back(dim4);
+                }
+                dim2.push_back(dim3);
+            }
+            tensor.push_back(dim2);
+        }
     }
 
     void traverse(TraversalCallback *callback) override {
@@ -172,6 +200,42 @@ public:
     // void printN(const Normal3f n) const {
     //     printf("<%f, %f, %f>\t", n.x(), n.y(), n.z());
     // }
+
+    // weightened Matrix
+    using Matrix = std::vector<std::vector<Float>>;
+    Matrix weightedSum(const Matrix& a, Float weightA, const Matrix& b, Float weightB, const Matrix& c, Float weightC, const Matrix& d, Float weightD) const {
+        // 結果の行列を初期化
+        Matrix result(a.size(), std::vector<Float>(a[0].size(), 0.0));
+        // 各要素に重みづけを適用して足し合わせる
+        for (size_t i = 0; i < a[0].size(); ++i) {
+            result[0][i] = a[0][i];
+            result[1][i] = a[1][i] * weightA + b[1][i] * weightB + c[1][i] * weightC + d[1][i] * weightD;
+        }
+        return result;
+    }
+
+    template<typename T>
+    std::function<T(Float)> generate_inverse_function(const std::vector<T>& x, const std::vector<Float>& cdf) const {
+        // 線形補間による逆関数の生成
+        return [=](Float probability) {
+            auto it = std::lower_bound(cdf.begin(), cdf.end(), probability);
+            if (it == cdf.begin()) {
+                return x.front();
+            }
+            if (it == cdf.end()) {
+                return x.back();
+            }
+            size_t index = std::distance(cdf.begin(), it);
+            Float t = (probability - cdf[index - 1]) / (cdf[index] - cdf[index - 1]);
+            return x[index - 1] + t * (x[index] - x[index - 1]);
+        };
+    }
+    template<typename T>
+    std::vector<T> cumulative_sum(const std::vector<T>& v) const {
+        std::vector<T> result(v.size());
+        std::partial_sum(v.begin(), v.end(), result.begin());
+        return result;
+    }
 
     // random numbers
     mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
@@ -745,7 +809,46 @@ public:
             // printf("R");
             // printV(si.wi);printV(wo_rr); printf("\n");
             Vector3f r3 = rand3c(rng);
-            si.p[selected_rr] += rotateVector(Vector3f(randX*r3.x(), randY*r3.y(), randZ*r3.z()), Normal3f(0.f, 0.f, 1.f), si.n);
+            //////////////////////////////////////////////
+            // サンプリング位置調整
+            //////////////////////////////////////////////
+            // インデックス特定
+            
+            Float x = dr::rad_to_deg(dr::acos(dr::abs(era_cos_i)));
+            Float x_phi60 = fmod(dr::mulsign(dr::rad_to_deg(dr::acos(era_sin_phi)), era_cos_phi) + 360.f, 60.f);  // 0 -- 60 [deg]
+            Float x_theta = 1.f - x;
+
+            Float theta_id5 = 0.0*0.2;
+            Float phi_id5 = 0.0*0.2;
+            Int32 thetaIdx = (int)theta_id5;
+            Int32 phiIdx = (int)phi_id5;
+            Float thetaWeight = theta_id5-thetaIdx;
+            Float phiWeight = phi_id5-phiIdx;
+
+            // 近傍4点のpdfを得る
+            Matrix pdf_i0j0 = tensor[thetaIdx  ][phiIdx  ];
+            Matrix pdf_i1j0 = tensor[thetaIdx+1][phiIdx  ];
+            Matrix pdf_i0j1 = tensor[thetaIdx  ][phiIdx+1];
+            Matrix pdf_i1j1 = tensor[thetaIdx+1][phiIdx+1];
+            // ウェイトを使って合成する
+            Matrix merged_pdf = weightedSum(pdf_i0j0, thetaWeight*phiWeight,
+                                            pdf_i0j1, (1.0-thetaWeight)*phiWeight,
+                                            pdf_i0j1, thetaWeight*(1.0-phiWeight),
+                                            pdf_i0j1, (1.0-thetaWeight)*(1.0-phiWeight));
+
+            // 逆関数法を使う
+            std::vector<Float> merged_cdf = cumulative_sum(merged_pdf[1]);
+            auto inverse_function = generate_inverse_function(merged_pdf[0], merged_cdf);
+            // 乱数を生成する
+            // 出射位置のズレ量を計算する
+            Point2f shiftRands = rand2(rng);
+            Float shiftAmount = inverse_function(shiftRands.x());
+            Float shiftPhase = dr::TwoPi<Float> * shiftRands.y();
+            // ランダムな方向に位置をずらす
+            si.p[selected_rr] += rotateVector(Vector3f(cornerCubeSize*shiftAmount*dr::cos(shiftPhase), cornerCubeSize*shiftAmount*dr::sin(shiftPhase), 0.f), Normal3f(0.f, 0.f, 1.f), si.n);
+            //////////////////////////////////////////////
+            // サンプリング位置調整
+            //////////////////////////////////////////////
             bs.wo[selected_rr] = wo_rr;
             bs.eta = dr::select(selected_rr, 1.f, bs.eta);
             bs.sampled_type = dr::select(selected_rr, UInt32(+BSDFFlags::GlossyTransmission | +BSDFFlags::GlossyReflection), bs.sampled_type);
@@ -1075,6 +1178,8 @@ private:
     ref<Texture> m_surface_reflectance;
     ref<Texture> m_internal_reflectance;
     Float randX, randY, randZ;
+    Float cornerCubeSize;
+    std::vector<std::vector<std::vector<std::vector<Float>>>> tensor;   // LUT tensor
 
 };
 
