@@ -69,6 +69,7 @@ public:
 
         m_radiance = props.texture_d65<Texture>("radiance", 1.f);
         m_coefficient = props.texture<Texture>("coefficient", 1.f)->mean();
+        m_gamma = props.texture<Texture>("gamma", 1.f)->mean();
 
         m_flags = +EmitterFlags::Surface;
         if (m_radiance->is_spatially_varying())
@@ -77,14 +78,16 @@ public:
     }
 
     void traverse(TraversalCallback *callback) override {
+        Base::traverse(callback);
         callback->put_object("radiance", m_radiance.get(), +ParamFlags::Differentiable);
         callback->put_parameter("coefficient", m_coefficient, +ParamFlags::Differentiable);
+        callback->put_parameter("gamma", m_gamma, +ParamFlags::Differentiable);
     }
 
     Spectrum eval(const SurfaceInteraction3f &si, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::EndpointEvaluate, active);
 
-        auto result = depolarizer<Spectrum>(m_radiance->eval(si, active)) &
+        auto result = depolarizer<Spectrum>(dr::pow(m_radiance->eval(si, active), m_gamma) * m_coefficient) &
                       (Frame3f::cos_theta(si.wi) > 0.f);
 
         return result;
@@ -157,7 +160,7 @@ public:
 
         UnpolarizedSpectrum spec = m_radiance->eval(si, active) / ds.pdf;
         ds.emitter = this;
-        return { ds, depolarizer<Spectrum>(spec) & active };
+        return { ds, depolarizer<Spectrum>(dr::pow(spec, m_gamma)) * m_coefficient & active };
     }
 
     Float pdf_direction(const Interaction3f &it, const DirectionSample3f &ds,
@@ -189,7 +192,7 @@ public:
         active &= dp < 0.f;
 
         SurfaceInteraction3f si(ds, it.wavelengths);
-        UnpolarizedSpectrum spec = m_radiance->eval(si, active);
+        UnpolarizedSpectrum spec = dr::pow(m_radiance->eval(si, active), m_gamma) * m_coefficient;
         return dr::select(active, depolarizer<Spectrum>(spec), 0.f);
     }
 
@@ -243,6 +246,7 @@ public:
         else         oss << "  <no medium attached!>";
         oss << std::endl;
         oss << "  coefficient = " << string::indent(m_coefficient) << "," << std::endl;
+        oss << "  gamma = " << string::indent(m_gamma) << "," << std::endl;
         oss << "]";
         return oss.str();
     }
@@ -251,6 +255,7 @@ public:
 private:
     ref<Texture> m_radiance;
     Float m_coefficient;
+    Float m_gamma;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(AreaLight, Emitter)
