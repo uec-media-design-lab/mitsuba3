@@ -39,7 +39,7 @@ git clone -b airr git@github.com:uec-media-design-lab/mitsuba3.git
 
 
 ## チュートリアル
-[こちら](https://github.com/uec-media-design-lab/mitsuba3/blob/airr/airr-examples/render.ipynb)からAIRRのシーンを読み込み、それぞれの光学素子のパラメータを変えながら空中像をレンダリングする様子が確認できます。
+[`airr-examples/render.ipynb`](https://github.com/uec-media-design-lab/mitsuba3/blob/airr/airr-examples/render.ipynb)からAIRRのシーンを読み込み、それぞれの光学素子のパラメータを変えながら空中像をレンダリングする様子が確認できます。
 
 
 ## 再帰性反射材(roughretroreflector)
