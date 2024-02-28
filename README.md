@@ -41,6 +41,9 @@ git clone -b airr git@github.com:uec-media-design-lab/mitsuba3.git
 > `git clone --recursive https://github.com/mitsuba-renderer/mitsuba3`は元のMitsuba 3リポジトリのmasterブランチの中身をクローンするコマンドです。
 > `git submodule update --init --recursive`以降のコマンドから実行するようにしてください。
 
+> [!NOTE]
+> ビルド完了後は必要に応じて再起動してください。
+
 ## チュートリアル
 [`airr-examples/render.ipynb`](https://github.com/uec-media-design-lab/mitsuba3/blob/airr/airr-examples/render.ipynb)からAIRRのシーンを読み込み、それぞれの光学素子のパラメータを変えながら空中像をレンダリングする様子が確認できます。
 
