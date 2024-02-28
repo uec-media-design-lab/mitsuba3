@@ -470,7 +470,7 @@ public:
 
             // RetroReflection
             // val_rr = pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * pow(Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo, 0.2);
-            val_rr = dr::select(correctRRpath, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * Di*D1*D2*D3*Do * Ji*J1*J2*J3*Jo * era, 0.f);
+            val_rr = dr::select(correctRRpath, pathProb * (1.f-Fi)*F1*F2*F3*(1.f-Fo) * Gi*G1*G2*G3*Go * dr::clamp(Di*D1*D2*D3*Do, 0.f, 1000000000000.f) * Ji*J1*J2*J3*Jo * era, 0.f);
             // printf("[P:%f, F:%f, G:%f, D:%f, J:%f]\n", pathProb, (1.f-Fi)*F1*F2*F3*(1.f-Fo), Gi*G1*G2*G3*Go, pow(Di*D1*D2*D3*Do, 0.2), Ji*J1*J2*J3*Jo);
 
             // Diffuse
@@ -868,6 +868,7 @@ public:
         // Mask invalid = !isfinite(brdf_d) || !isfinite(brdf_rr) || !isfinite(brdf_d);
         // if (dr::any_or<true>(invalid)) { printf("invalid:(%f, %f, %f)\t", brdf_d, brdf_rr, brdf_r);}
         return value & active;
+        // return 0.f;
     }
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
@@ -1005,6 +1006,7 @@ public:
         auto prob = dr::select(active && valid, prob_r + prob_rr + prob_d, 0.f);
 
         return {brdf, prob};
+        // return {0.f, 0.f};
 
     }
 
