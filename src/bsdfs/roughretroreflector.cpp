@@ -185,6 +185,7 @@ public:
             callback->put_object("alpha_u_internal", m_alpha_u_internal.get(),      ParamFlags::Differentiable | ParamFlags::Discontinuous);
             callback->put_object("alpha_v_internal", m_alpha_v_internal.get(),      ParamFlags::Differentiable | ParamFlags::Discontinuous);
         }
+        callback->put_parameter("corner_size", cornerCubeSize, ParamFlags::Differentiable | ParamFlags::Discontinuous);
         callback->put_parameter("eta", m_eta, ParamFlags::Differentiable | ParamFlags::Discontinuous);
         if (m_surface_reflectance)
             callback->put_object("surface_reflectance", m_surface_reflectance.get(),   +ParamFlags::Differentiable);
@@ -920,6 +921,10 @@ public:
         // weight = 0.1f;
         // printf("<%f, %f>\n",(1.f-Fi)*F1*F2*F3*(1.f-Fo), (1.f-Fi)*(1.f-F1*F2*F3*(1.f-Fo)));
         
+        // // rm invalid
+        Mask isValid = dr::isfinite(bs.wo.x()) && dr::isfinite(bs.pdf);
+        bs = dr::select(isValid, bs, dr::zeros<BSDFSample3f>());
+        weight = dr::select(isValid, weight, 0.f);
         return {bs, weight};
     }
 
@@ -1109,9 +1114,9 @@ public:
         for (int i=0; i<12; i++) {
             auto [v_rr_brdf, v_d_brdf] = p[i].eval(si, m_alpha_u_surface, m_alpha_v_surface, m_alpha_u_internal, m_alpha_v_internal, m_type, active, m_sample_visible);
             auto [v_rr_prob, v_d_prob] = p[i].pdf( si, m_alpha_u_surface, m_alpha_v_surface, m_alpha_u_internal, m_alpha_v_internal, m_type, active, m_sample_visible);
-            brdf_rr += v_rr_brdf;
+            // brdf_rr += v_rr_brdf;
             brdf_d += v_d_brdf;
-            prob_rr += v_rr_prob;
+            // prob_rr += v_rr_prob;
             prob_d += v_d_prob;
         }
 
@@ -1159,6 +1164,7 @@ public:
         oss << "  eta = "       << m_eta << std::endl
             << "  eta_air = "   << m_eta_air << std::endl
             << "  eta_mat = "   << m_eta_mat << std::endl
+            << " corner_size = " << cornerCubeSize << std::endl
             << "]";
         return oss.str();
     }
