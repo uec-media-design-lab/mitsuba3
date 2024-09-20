@@ -1,0 +1,86 @@
+<scene version='3.0.0'>
+    <default name="spp" value="512"/>
+    <default name="res" value="256"/>
+    <default name="rr_alpha" value="0.0001"/>
+    <default name="hm_r" value="0.5"/>
+    <default name="hm_t" value="0.5"/>
+    <default name="display_intensity" value="1.0"/>
+
+    <integrator type='path'>
+        <integer name="max_depth" value="-1"/>
+        <integer name="rr_depth" value="1"/>
+    </integrator>
+
+    <sensor type="perspective">
+        <transform name="to_world">
+            <lookat target="0.0, 0.0, 200"
+                    origin="0.0, 0, 600"
+                    up    ="0.0, 1.0, 0.0"/>
+        </transform>
+        <string name="focal_length" value="35mm"/>
+        <sampler type="independent">
+            <integer name="sample_count" value="$spp"/>
+        </sampler>
+        <film type="hdrfilm">
+            <rfilter type="tent"/>
+            <integer name="width"  value="$res"/>
+            <integer name="height" value="$res"/>
+        </film>
+    </sensor>
+
+    <!-- BSDFs -->
+    <bsdf type="roughretroreflector2" id="mat-reflector">
+        <float name="alpha" value="$rr_alpha"/>
+    </bsdf>
+    <bsdf type="halfmirror" id="mat-half-mirror">
+        <float name="reflectance" value="$hm_r"/>
+        <float name="transmittance" value="$hm_t"/>
+    </bsdf>
+    <emitter type="area" id="displayed image">
+        <texture name="radiance" type="bitmap">
+            <string name="filename" value="../docs/images/logo.png"/>
+        </texture>
+        <float name="coefficient" value="$display_intensity"/>
+    </emitter>
+    <bsdf type="diffuse" id="mat-plane white">
+        <spectrum name="reflectance" value="1"/>
+    </bsdf>
+
+    <!-- Enfironment lighting -->
+    <emitter type="constant">
+        <spectrum name="radiance" value="0.002"/>
+    </emitter>
+
+    <!-- Shapes -->
+    <shape type="rectangle" id="shape-display">
+        <ref id="displayed image"/>
+        <transform name="to_world">
+            <scale x="50" y="50"/>
+            <rotate z="1" angle="180"/>
+            <rotate y="1" angle="-90"/>
+            <translate x="200" y="0" z="0"/>
+        </transform>
+    </shape>
+    <shape type="rectangle" id="shape-retroreflector">
+        <ref id="mat-reflector"/>
+        <transform name="to_world">
+            <scale x="175" y="175"/>
+            <translate x="50" y="48" z="-150"/>
+        </transform>
+    </shape>
+    <shape type="rectangle" id="shape-half-mirror">
+        <ref id="mat-half-mirror"/>
+        <transform name="to_world">
+            <scale x="178" y="127"/>
+            <rotate y="1" angle="-45"/>
+        </transform>
+    </shape>
+    <shape type="rectangle" id="shape-floor">
+        <ref id="mat-plane white"/>
+        <transform name="to_world">
+            <scale x="500" y="500"/>
+            <rotate x="1" angle="-90"/>
+            <translate z="100" y="-127"/>
+        </transform>
+    </shape>
+</scene>
