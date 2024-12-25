@@ -25,10 +25,15 @@ add_plugin(measured_polarized   measured_polarized.cpp)
 add_plugin(pplastic             pplastic.cpp)
 add_plugin(principled           principled.cpp)
 add_plugin(principledthin       principledthin.cpp)
+# add_plugin(MERL                 MERL.cpp)
+add_plugin(sinc                 sinc.cpp)
+add_plugin(sincarray            sincarray.cpp)
 
 # add_plugin(roughretroreflector2  roughretroreflector2.cpp)
 # add_plugin(roughretroreflectorBSSRDF  roughretroreflectorBSSRDF.cpp)
 
 add_plugin(naiveRetroReflector  naiveretroreflector.cpp)
+
+add_plugin(lookuptable  lookuptable.cpp)
 
 set(MI_PLUGIN_TARGETS "${MI_PLUGIN_TARGETS}" PARENT_SCOPE)

@@ -4,6 +4,14 @@
 #include <mitsuba/render/bsdf.h>
 #include <mitsuba/render/texture.h>
 
+#include <mitsuba/core/ray.h>
+#include <drjit/transform.h>
+// #include <mitsuba/render/microfacet.h>
+// #include <mitsuba/core/transform.h>
+// #include <iostream>
+// #include <fstream>
+#include <random>
+
 NAMESPACE_BEGIN(mitsuba)
 
 /**!
@@ -89,6 +97,7 @@ public:
 
     naiveRetroReflector(const Properties &props) : Base(props) {
         m_reflectance = props.texture<Texture>("reflectance", .5f);
+        m_alpha = props.texture<Texture>("alpha", .00005f);
         m_flags = BSDFFlags::DeltaReflection | BSDFFlags::FrontSide;
         dr::set_attr(this, "flags", m_flags);
         m_components.push_back(m_flags);
@@ -98,6 +107,7 @@ public:
 
     void traverse(TraversalCallback *callback) override {
         callback->put_object("reflectance", m_reflectance.get(), +ParamFlags::Differentiable);
+        callback->put_object("alpha", m_alpha.get(), +ParamFlags::Differentiable);
     }
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
@@ -107,9 +117,14 @@ public:
                                              Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
-        std::cout << "naiveRetroReflector Sample" << std::endl;
+        // std::cout << "naiveRetroReflector Sample" << std::endl;
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        Float cos_phi_i = Frame3f::cos_phi(si.wi);
+        Float theta_i_deg = dr::acos(cos_theta_i) * 180.0 * dr::InvPi<Float>;
+        Float theta_i = dr::acos(cos_theta_i);
+        Float phi_i_deg = dr::acos(cos_phi_i) * 180.0 * dr::InvPi<Float>;
+        Float phi_i = dr::acos(cos_phi_i);
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
 
         active &= cos_theta_i > 0.f;
@@ -117,11 +132,33 @@ public:
                      !ctx.is_enabled(BSDFFlags::DeltaReflection)))
             return { bs, 0.f };
 
-        bs.wo = si.wi;
+        // std::cout << "cos_theta_i = " << (dr::acos(cos_theta_i)*180.0*dr::InvPi<Float>) << std::endl;
+        // std::cout << "cos_phi_i = " << (dr::acos(cos_phi_i)*180.0*dr::InvPi<Float>) << std::endl;
+        
+        // std::normal_distribution<> dist(theta_i_deg, 0.0005);
+        // float theta_o_deg = dist(sample2.y());
+        // std::cout << "theta_o_deg = " << theta_o_deg << std::endl;
+
+        // とりあえずGGXに従う乱数を生成する
+        // 中心theta_iであり、標準偏差は探索するパラメータ
+        // MicrofacetDistribution microfacet(MicrofacetType::GGX, m_alpha->eval_1(si, active));
+        // Vector3f m;
+        // std::tie(m, bs.pdf) = microfacet.sample(si.wi, sample2);
+
+        // bs.wo = Transform.rotate(si.n, phi_i)*Transform.rotate(si.n, theta_i)*si.n;
+        // static constexpr size_t Size = Point_::Size;
+        // struct Transform transform = {};
+        using Value = Float;
+        using Matrix4f = dr::Matrix<Value, 4>;
+        // bs.wo = dr::matmul(dr::matmul(dr::rotate<Matrix4f>(Vector3f(0.f, 1.f, 0.f), theta_i), dr::rotate<Matrix4f>(si.n, phi_i)), si.n);
+        bs.wo = Transform4f(dr::rotate<Matrix4f>(Vector3f(0.f, 1.f, 0.f), theta_i))*Transform4f(dr::rotate<Matrix4f>(si.n, phi_i))*si.n;
+        // bs.wo = si.wi;
         bs.pdf = 1.f;
         bs.eta = 1.f;
         bs.sampled_type = +BSDFFlags::DeltaReflection;
         bs.sampled_component = 0;
+
+        active &= dr::neq(bs.pdf, 0.f) && Frame3f::cos_theta(bs.wo) > 0.f;
 
         UnpolarizedSpectrum value = m_reflectance->eval(si, active);
 
@@ -180,6 +217,7 @@ public:
     MI_DECLARE_CLASS()
 private:
     ref<Texture> m_reflectance;
+    ref<Texture> m_alpha; // 拡がり角の正規分布の標準偏差
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(naiveRetroReflector, BSDF)

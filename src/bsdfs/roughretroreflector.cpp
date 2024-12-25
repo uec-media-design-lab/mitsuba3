@@ -569,20 +569,20 @@ public:
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
         Spectrum weight = 0.f;
 
-        std::cout << "Sampled" << std::endl;                                                
+        // std::cout << "Sampled" << std::endl;                                                
 
         auto rng = setRandomGenerator(sample1*1000000);
-        std::cout << "Sampled" << std::endl;
+        // std::cout << "Sampled" << std::endl;
         // auto rng = setRandomGenerator(sample1*10);
         MicrofacetDistribution distr_surface(m_type, m_alpha_u_surface->eval_1(si, active), m_alpha_v_surface->eval_1(si, active), m_sample_visible);
-        std::cout << "Sampled" << std::endl;
+        // std::cout << "Sampled" << std::endl;
         MicrofacetDistribution sample_distr_surface(distr_surface);
-        std::cout << "Sampled" << std::endl;
+        // std::cout << "Sampled" << std::endl;
         MicrofacetDistribution distr_internal(m_type, m_alpha_u_internal->eval_1(si, active), m_alpha_v_internal->eval_1(si, active), m_sample_visible);
-        std::cout << "Sampled" << std::endl;
+        // std::cout << "Sampled" << std::endl;
         MicrofacetDistribution sample_distr_internal(distr_internal);
 
-        std::cout << "Sampled" << std::endl;                                                
+        // std::cout << "Sampled" << std::endl;                                                
         
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
         active &= cos_theta_i != 0.f;
