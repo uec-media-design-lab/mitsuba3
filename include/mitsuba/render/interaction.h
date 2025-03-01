@@ -134,6 +134,7 @@ struct Interaction {
 
     /// Spawn a semi-infinite ray towards the given direction
     Ray3f spawn_ray(const Vector3f &d) const {
+        // Point3f offset = Point3f(0.080, 0, 0); // プロトタイプのため追記
         return Ray3f(offset_p(d), d, dr::Largest<Float>, time, wavelengths);
     }
 

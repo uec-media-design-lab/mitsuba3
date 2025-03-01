@@ -14,6 +14,7 @@
 #include <drjit/dynamic.h>
 #include <array>
 
+
 NAMESPACE_BEGIN(mitsuba)
 
 /** =======================================================================
@@ -71,7 +72,7 @@ NAMESPACE_BEGIN(mitsuba)
  * =======================================================================
  */
 
-template <typename Float_, size_t Dimension_ = 0>
+template <typename Float_, size_t Dimesion_ = 0>
 class DiscreteDistribution2D {
 public:
     using Float                       = Float_;
@@ -137,7 +138,8 @@ public:
      * re-uniformized random variate that can be used for further sampling
      * steps.
      */
-    std::tuple<Point2u, Float, Point2f> sample(const Point2f &sample_,
+    // std::tuple<Point2u, Float, Point2f> sample(const Point2f &sample_,
+    std::tuple<Point2f, Float, Point2f> sample(const Point2f &sample_,
                                                Mask active = true) const {
         MI_MASK_ARGUMENT(active);
         Point2f sample(sample_);
@@ -154,6 +156,11 @@ public:
                 return dr::gather<Float>(m_marg_cdf, idx, active) < sample.y();
             });
 
+        Float m_marg_cdf_row = dr::gather<Float>(m_marg_cdf, row);
+        Float m_marg_cdf_rowp1 = dr::gather<Float>(m_marg_cdf, row+1);
+        Float ty = (sample.y() - m_marg_cdf_row) / (m_marg_cdf_rowp1 - m_marg_cdf_row);
+        Float row_f = row + ty;
+
         UInt32 offset = row * m_size.x();
 
         // Scale sample X range
@@ -164,6 +171,11 @@ public:
             0u, m_size.x() - 1, [&](UInt32 idx) DRJIT_INLINE_LAMBDA {
                 return dr::gather<Float>(m_cond_cdf, idx + offset, active) < sample.x();
             });
+        
+        Float m_cond_cdf_col = dr::gather<Float>(m_cond_cdf, col);
+        Float m_cond_cdf_colp1 = dr::gather<Float>(m_cond_cdf, col+1);
+        Float tx = (sample.x() - m_cond_cdf_col) / (m_cond_cdf_colp1 - m_cond_cdf_col);
+        Float col_f = col + tx;
 
         // Re-scale uniform variate
         Float col_cdf_0 = dr::gather<Float>(m_cond_cdf, offset + col - 1, active && col > 0),
@@ -176,7 +188,8 @@ public:
         dr::masked(sample.x(), dr::neq(col_cdf_1, col_cdf_0)) /= col_cdf_1 - col_cdf_0;
         dr::masked(sample.y(), dr::neq(row_cdf_1, row_cdf_0)) /= row_cdf_1 - row_cdf_0;
 
-        return { Point2u(col, row), (col_cdf_1 - col_cdf_0) * m_normalization, sample };
+        // return { Point2u(col, row), (col_cdf_1 - col_cdf_0) * m_normalization, sample };
+        return { Point2f(col_f, row_f), (col_cdf_1 - col_cdf_0) * m_normalization, sample };
     }
 
     std::string to_string() const {

@@ -38,12 +38,12 @@ template <typename T> constexpr auto SqrtSix         = dr::scalar_t<T>(2.4494897
 template <typename T> constexpr auto InvSqrtSix      = dr::scalar_t<T>(0.40824829046386301637);
 
 template <typename Float, typename Spectrum>
-class RoughRetroreflector final : public BSDF<Float, Spectrum> {
+class RoughRetroreflector3 final : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
 
-    RoughRetroreflector(const Properties &props) : Base(props) {
+    RoughRetroreflector3(const Properties &props) : Base(props) {
         m_pa = Normal3f(2*InvSqrtSix<Float>, 0, InvSqrtThree<Float>);                         // →
         m_qa = Normal3f(-InvSqrtSix<Float>, dr::InvSqrtTwo<Float>, InvSqrtThree<Float>);    // ↖
         m_ra = Normal3f(-InvSqrtSix<Float>, -dr::InvSqrtTwo<Float>, InvSqrtThree<Float>);   // ↙
@@ -172,7 +172,7 @@ public:
 
     // random numbers
     mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
-        mitsuba::PCG32<UInt32> rng(1, PCG32_DEFAULT_STATE, seed);
+        mitsuba::PCG32<UInt32> rng(PCG32_DEFAULT_STATE, seed);
         rng.state = seed*1000000;
         rng.template next_float<Float>();
         return rng;
@@ -548,6 +548,7 @@ public:
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
+                                            //  SurfaceInteraction3f &si,
                                              Float sample1,
                                              const Point2f &sample2,
                                              Mask active) const override {
@@ -574,7 +575,7 @@ public:
         MicrofacetDistribution sample_distr_internal(distr_internal);
         
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        // active &= cos_theta_i != 0.f; # これがあるとエラーになるので消した
+        active &= cos_theta_i != 0.f;
         
         if (unlikely(!m_sample_visible)) {  // Walter's trick
             sample_distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
@@ -937,6 +938,7 @@ public:
 
     std::pair<Spectrum, Float> eval_pdf(const BSDFContext &ctx,
                                         const SurfaceInteraction3f &si,
+                                        // SurfaceInteraction3f &si,
                                         const Vector3f &wo,
                                         Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
@@ -1058,6 +1060,6 @@ private:
     ref<Texture> m_internal_reflectance;
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector, BSDF)
-MI_EXPORT_PLUGIN(RoughRetroreflector, "Rough retroreflector")
+MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector3, BSDF)
+MI_EXPORT_PLUGIN(RoughRetroreflector3, "Rough retroreflector")
 NAMESPACE_END(mitsuba)

@@ -229,6 +229,7 @@ public:
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
+                                            // SurfaceInteraction3f &si,
                                              Float /* sample1 */,
                                              const Point2f &sample2,
                                              Mask active) const override {
@@ -318,6 +319,7 @@ public:
 
     std::pair<Spectrum, Float> eval_pdf(const BSDFContext &ctx,
                                         const SurfaceInteraction3f &si,
+                                        // SurfaceInteraction3f &si,
                                         const Vector3f &wo,
                                         Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);

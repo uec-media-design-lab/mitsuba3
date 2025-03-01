@@ -40,6 +40,7 @@ public:
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
+                                            //  SurfaceInteraction3f &si,
                                              Float sample1,
                                              const Point2f & /*sample2*/,
                                              Mask active) const override {
@@ -74,6 +75,9 @@ public:
         bs.eta = 1.f;
         bs.sampled_component = dr::select(selected_r, UInt32(0), bs.sampled_component);
         bs.sampled_component = dr::select(selected_t, UInt32(1), bs.sampled_component);
+        // bs.isBSSRDF = false;
+        // bs.p = si.p + Point3f(0.0, 0.0, 0.0);
+        bs.p = Point3f(0.0, 0.0, 0.0);
 
         weight = dr::select(selected_r, m_reflectance * m_reflectance_texture->eval(si, selected_r), weight);
         weight = dr::select(selected_t, m_transmittance * m_transmittance_texture->eval(si, selected_t), weight);

@@ -183,6 +183,9 @@ template <typename Float, typename Spectrum> struct BSDFSample3 {
 
     using Vector3f = Vector<Float, 3>;
     using UInt32   = dr::uint32_array_t<Float>;
+    using Point3f = Point<Float, 3>; // 追記
+    using Mask = dr::mask_t<Float>; // 追記
+    using Bool = Mask;
 
     //! @}
     // =============================================================
@@ -205,6 +208,12 @@ template <typename Float, typename Spectrum> struct BSDFSample3 {
 
     /// Stores the component index that was sampled by \ref BSDF::sample()
     UInt32 sampled_component;
+
+    Bool isBSSRDF = false;
+    // Mask isBSSRDF;
+
+    // Point3f p = Point3f(0.0, 0.0, 0.0);
+    Point3f p;
 
     //! @}
     // =============================================================
@@ -311,12 +320,19 @@ public:
      *            cosine foreshortening factor when a non-delta component is
      *            sampled). A zero spectrum indicates that sampling failed.
      */
+    // virtual std::pair<BSDFSample3f, Spectrum>
+    // sample(const BSDFContext &ctx,
+    //        SurfaceInteraction3f &si,
+    //        Float sample1,
+    //        const Point2f &sample2,
+    //        Mask active = true) const = 0;
+
     virtual std::pair<BSDFSample3f, Spectrum>
     sample(const BSDFContext &ctx,
-           const SurfaceInteraction3f &si,
-           Float sample1,
-           const Point2f &sample2,
-           Mask active = true) const = 0;
+            const SurfaceInteraction3f &si,
+            Float sample1,
+            const Point2f &sample2,
+            Mask active = true) const = 0;
 
     /**
      * \brief Evaluate the BSDF f(wi, wo) or its adjoint version f^{*}(wi, wo)
@@ -448,9 +464,19 @@ public:
      *     A uniformly distributed sample on \f$[0,1]^2\f$. It is
      *     used to generate the sampled direction.
      */
+    // virtual std::tuple<Spectrum, Float, BSDFSample3f, Spectrum>
+    // eval_pdf_sample(const BSDFContext &ctx,
+    //                 // const SurfaceInteraction3f &si,
+    //                 SurfaceInteraction3f &si,        
+    //                 const Vector3f &wo,
+    //                 Float sample1,
+    //                 const Point2f &sample2,
+    //                 Mask active = true) const;
+
     virtual std::tuple<Spectrum, Float, BSDFSample3f, Spectrum>
     eval_pdf_sample(const BSDFContext &ctx,
                     const SurfaceInteraction3f &si,
+                    // SurfaceInteraction3f &si,        
                     const Vector3f &wo,
                     Float sample1,
                     const Point2f &sample2,
@@ -660,12 +686,14 @@ NAMESPACE_END(mitsuba)
 // -----------------------------------------------------------------------
 
 DRJIT_VCALL_TEMPLATE_BEGIN(mitsuba::BSDF)
+    // DRJIT_VCALL_METHOD(sample_nonconst)
     DRJIT_VCALL_METHOD(sample)
     DRJIT_VCALL_METHOD(eval)
     DRJIT_VCALL_METHOD(eval_null_transmission)
     DRJIT_VCALL_METHOD(pdf)
     DRJIT_VCALL_METHOD(eval_pdf)
     DRJIT_VCALL_METHOD(eval_pdf_sample)
+    // DRJIT_VCALL_METHOD(eval_pdf_sample_nonconst)
     DRJIT_VCALL_METHOD(eval_diffuse_reflectance)
     DRJIT_VCALL_METHOD(has_attribute)
     DRJIT_VCALL_METHOD(eval_attribute)

@@ -234,6 +234,17 @@ public:
             bsdf_weight = si.to_world_mueller(bsdf_weight, -bsdf_sample.wo, si.wi);
 
             ray = si.spawn_ray(si.to_world(bsdf_sample.wo));
+            // Point3f origin = ray.o + bsdf_sample.p;
+            // ray.o = origin;
+            // ray.o = dr::select(
+            //     bsdf_sample.isBSSRDF & active,
+            //     bsdf_sample.p,
+            //     origin
+            // );
+            // if (bsdf_sample.isBSSRDF) {
+            
+            //     // printf("position changed\n");
+            // }
 
             /* When the path tracer is differentiated, we must be careful that
                the generated Monte Carlo samples are detached (i.e. don't track

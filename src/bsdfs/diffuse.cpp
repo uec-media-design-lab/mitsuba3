@@ -100,6 +100,7 @@ public:
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
+                                            // SurfaceInteraction3f &si,
                                              Float /* sample1 */,
                                              const Point2f &sample2,
                                              Mask active) const override {
@@ -118,6 +119,9 @@ public:
         bs.eta = 1.f;
         bs.sampled_type = +BSDFFlags::DiffuseReflection;
         bs.sampled_component = 0;
+        // bs.p = si.p + Point3f(0.0, 0.0, 0.0);
+        bs.p = Point3f(0.0, 0.0, 0.0);
+        // bs.isBSSRDF = false;
 
         UnpolarizedSpectrum value = m_reflectance->eval(si, active);
 
@@ -159,6 +163,7 @@ public:
 
     std::pair<Spectrum, Float> eval_pdf(const BSDFContext &ctx,
                                         const SurfaceInteraction3f &si,
+                                        // SurfaceInteraction3f &si,
                                         const Vector3f &wo,
                                         Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);

@@ -9,6 +9,8 @@
 #include <mitsuba/render/sampler.h>
 #include <mitsuba/core/traits.h>
 
+#include <mitsuba/render/sampler.h>
+
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -143,6 +145,10 @@ public:
         m_surface_reflectance   = props.texture<Texture>("surface_reflectance", 1.f);
     
         m_internal_reflectance   = props.texture<Texture>("internal_reflectance", 1.f);
+
+
+        // sampler（菅原追記）
+        // m_sampler = mitsuba::IndependentSampler<Float, Spectrum>(props);
     }
 
     void traverse(TraversalCallback *callback) override {
@@ -172,8 +178,10 @@ public:
 
     // random numbers
     mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
-        mitsuba::PCG32<UInt32> rng(PCG32_DEFAULT_STATE, seed);
-        rng.state = seed*1000000;
+        // mitsuba::PCG32<UInt32> rng(PCG32_DEFAULT_STATE, seed);
+        mitsuba::PCG32<UInt32> rng(1, PCG32_DEFAULT_STATE, seed);
+        // rng.state = seed*1000000;
+        rng.state = seed;
         rng.template next_float<Float>();
         return rng;
     }
@@ -574,7 +582,7 @@ public:
         MicrofacetDistribution sample_distr_internal(distr_internal);
         
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        active &= cos_theta_i != 0.f;
+        // active &= cos_theta_i != 0.f; これあるとエラーになるのでコメントアウト
         
         if (unlikely(!m_sample_visible)) {  // Walter's trick
             sample_distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
@@ -616,7 +624,8 @@ public:
             // ベース法線決定
             auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, rng);
             auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, rng);
-            r1 = rand(rng);
+            // r1 = rand(rng);
+            r1 = (sample1 - Fi) / (1.0f - Fi); // [0, 1]にスケーリング
             Mask elemA = (r1 <= 0.5f) && active;
             Mask elemB = (r1 >  0.5f) && active;
             n1 = dr::select(elemA, a1, b1);
@@ -1056,6 +1065,7 @@ private:
     Float diffuseFactor;
     ref<Texture> m_surface_reflectance;
     ref<Texture> m_internal_reflectance;
+    // mitsuba::IndependentSampler<Float, Spectrum> m_sampler;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(RoughRetroreflector, BSDF)

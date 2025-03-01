@@ -143,6 +143,8 @@ public:
         m_surface_reflectance   = props.texture<Texture>("surface_reflectance", 1.f);
     
         m_internal_reflectance   = props.texture<Texture>("internal_reflectance", 1.f);
+
+        std::cout << "RRR BSDF was initialized" << std::endl;
     }
 
     void traverse(TraversalCallback *callback) override {
@@ -172,7 +174,7 @@ public:
 
     // random numbers
     mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
-        mitsuba::PCG32<UInt32> rng(1, PCG32_DEFAULT_STATE, seed);
+        mitsuba::PCG32<UInt32> rng(PCG32_DEFAULT_STATE, seed);
         rng.state = seed*1000000;
         rng.template next_float<Float>();
         return rng;
@@ -548,6 +550,7 @@ public:
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
+                                            // SurfaceInteraction3f &si,
                                              Float sample1,
                                              const Point2f &sample2,
                                              Mask active) const override {
@@ -567,14 +570,23 @@ public:
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
         Spectrum weight = 0.f;
 
+        // std::cout << "Sampled" << std::endl;                                                
+
         auto rng = setRandomGenerator(sample1*1000000);
+        // std::cout << "Sampled" << std::endl;
+        // auto rng = setRandomGenerator(sample1*10);
         MicrofacetDistribution distr_surface(m_type, m_alpha_u_surface->eval_1(si, active), m_alpha_v_surface->eval_1(si, active), m_sample_visible);
+        // std::cout << "Sampled" << std::endl;
         MicrofacetDistribution sample_distr_surface(distr_surface);
+        // std::cout << "Sampled" << std::endl;
         MicrofacetDistribution distr_internal(m_type, m_alpha_u_internal->eval_1(si, active), m_alpha_v_internal->eval_1(si, active), m_sample_visible);
+        // std::cout << "Sampled" << std::endl;
         MicrofacetDistribution sample_distr_internal(distr_internal);
+
+        // std::cout << "Sampled" << std::endl;                                                
         
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        // active &= cos_theta_i != 0.f; # これがあるとエラーになるので消した
+        active &= cos_theta_i != 0.f;
         
         if (unlikely(!m_sample_visible)) {  // Walter's trick
             sample_distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
@@ -623,6 +635,7 @@ public:
             n2 = dr::select(elemA, a2, b2);
             n3 = dr::select(elemA, a3, b3);
             pathProb = dr::select(elemA, pa, pb);
+
 
             // n1反射
             r2 = rand2(rng);
@@ -701,6 +714,7 @@ public:
         // printN(m3);
         // printN(mo);printf("\n");
         Float cos_theta_o = Frame3f::cos_theta(wo_rr);
+
 
         // それぞれの表面のBSDFSampleを作る
         // 表面
@@ -796,6 +810,7 @@ public:
         }
         // weight = 0.1f;
         // printf("<%f, %f>\n",(1.f-Fi)*F1*F2*F3*(1.f-Fo), (1.f-Fi)*(1.f-F1*F2*F3*(1.f-Fo)));
+
         
         return {bs, weight};
     }
@@ -807,6 +822,8 @@ public:
                                              m_alpha_u_surface->eval_1(si, active),
                                              m_alpha_v_surface->eval_1(si, active),
                                              m_sample_visible);
+        std::cout << "Evaluation" << std::endl;
+        
         // return 1.f;
         // BRDF, activeチェック
         Spectrum value = 0.f;
@@ -937,6 +954,7 @@ public:
 
     std::pair<Spectrum, Float> eval_pdf(const BSDFContext &ctx,
                                         const SurfaceInteraction3f &si,
+                                        // SurfaceInteraction3f &si,
                                         const Vector3f &wo,
                                         Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);

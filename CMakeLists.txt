@@ -31,6 +31,9 @@ option(MI_ENABLE_EMBREE  "Use Embree for ray tracing operations?" ON)
 # On Linux:
 #   export LD_LIBRARY_PATH=<path to libasan.so>
 
+
+set (CMAKE_CXX_STANDARD 11) # C++11でコンパイルしたいので追記
+
 option(MI_SANITIZE_ADDRESS "Enable GCC/Clang address sanitizer?" OFF) # To catch out-of-bounds accesses
 option(MI_SANITIZE_MEMORY  "Enable GCC/Clang memory sanitizer?"  OFF) # To catch use of uninitialized memory
 

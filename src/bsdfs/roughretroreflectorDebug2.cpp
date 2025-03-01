@@ -9,6 +9,8 @@
 #include <mitsuba/render/sampler.h>
 #include <mitsuba/core/traits.h>
 
+#include <random>
+
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -172,7 +174,7 @@ public:
 
     // random numbers
     mitsuba::PCG32<UInt32> setRandomGenerator(const Float seed) const {
-        mitsuba::PCG32<UInt32> rng(1, PCG32_DEFAULT_STATE, seed);
+        mitsuba::PCG32<UInt32> rng(PCG32_DEFAULT_STATE, seed);
         rng.state = seed*1000000;
         rng.template next_float<Float>();
         return rng;
@@ -209,14 +211,14 @@ public:
     }
 
     // sampleRoute
-    std::tuple<Normal3f, Normal3f, Normal3f, Float> sampleRoute(const Vector3f wi, const Normal3f a, const Normal3f b, const Normal3f c, mitsuba::PCG32<UInt32> &rng) const {
+    std::tuple<Normal3f, Normal3f, Normal3f, Float> sampleRoute(const Vector3f wi, const Normal3f a, const Normal3f b, const Normal3f c, Point2f r2) const {
         // wi toward a,b,c normals
         // pa,qa,raもしくはpb,qb,rbが与えられたときにサンプルする順番とその確率を与える
         Float prob=0.5f;    // △ or ▽
         Normal3f n1, n2, n3;
         Normal3f nt1, nt2;
         Vector3f vt;
-        Point2f r2 = rand2(rng);
+        // Point2f r2 = rand2(rng);
 
         // 1st surface
         Float inner_a = dr::clamp(dr::dot(-wi, a), 0.f, 1.f);
@@ -244,6 +246,41 @@ public:
 
         return std::forward_as_tuple(n1, n2, n3, prob);
     }
+    // std::tuple<Normal3f, Normal3f, Normal3f, Float> sampleRoute(const Vector3f wi, const Normal3f a, const Normal3f b, const Normal3f c, mitsuba::PCG32<UInt32> &rng) const {
+    //     // wi toward a,b,c normals
+    //     // pa,qa,raもしくはpb,qb,rbが与えられたときにサンプルする順番とその確率を与える
+    //     Float prob=0.5f;    // △ or ▽
+    //     Normal3f n1, n2, n3;
+    //     Normal3f nt1, nt2;
+    //     Vector3f vt;
+    //     Point2f r2 = rand2(rng);
+
+    //     // 1st surface
+    //     Float inner_a = dr::clamp(dr::dot(-wi, a), 0.f, 1.f);
+    //     Float inner_b = dr::clamp(dr::dot(-wi, b), 0.f, 1.f);
+    //     Float inner_c = dr::clamp(dr::dot(-wi, c), 0.f, 1.f);
+    //     Float invDenominator = 1.f / (inner_a + inner_b + inner_c);
+    //     n1 =    dr::select(Mask(r2.x() <= inner_a*invDenominator), a,
+    //             dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), b, c));
+    //     prob =  dr::select(Mask(r2.x() <= inner_a*invDenominator), inner_a,
+    //             dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), inner_b, inner_c)) * invDenominator * 0.5f;
+
+    //     // 2nd, 3rd surfaces
+    //     nt1 =   dr::select(Mask(r2.x() <= inner_a*invDenominator), b, 
+    //             dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), a, a));
+    //     nt2 =   dr::select(Mask(r2.x() <= inner_a*invDenominator), c, 
+    //             dr::select(Mask(r2.x() <= (inner_a+inner_b)*invDenominator), c, b));
+    //     vt = reflect(-wi, n1);
+    //     Float inner_nt1 = dr::clamp(dr::dot(-vt, nt1), 0.f, 1.f);
+    //     Float inner_nt2 = dr::clamp(dr::dot(-vt, nt2), 0.f, 1.f);
+    //     invDenominator = 1.f / (inner_nt1 + inner_nt2);
+
+    //     n2 =            dr::select(Mask(r2.y() <= inner_nt1*invDenominator), nt1, nt2);
+    //     n3 =            dr::select(Mask(r2.y() <= inner_nt1*invDenominator), nt2, nt1);
+    //     prob = prob *   dr::select(Mask(r2.y() <= inner_nt1*invDenominator), inner_nt1, inner_nt2) * invDenominator;
+
+    //     return std::forward_as_tuple(n1, n2, n3, prob);
+    // }
 
     // ERA
     Float ERA(const Float cos_theta_i, const Float sin_phi_i, const Float cos_phi_i) const {
@@ -567,14 +604,18 @@ public:
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
         Spectrum weight = 0.f;
 
-        auto rng = setRandomGenerator(sample1*1000000);
+        // auto rng = setRandomGenerator(sample1*1000000);
+        std::random_device seed_gen;
+        std::mt19937 engine(seed_gen());
+        std::uniform_real_distribution distr(0.0, 1.0);
+
         MicrofacetDistribution distr_surface(m_type, m_alpha_u_surface->eval_1(si, active), m_alpha_v_surface->eval_1(si, active), m_sample_visible);
         MicrofacetDistribution sample_distr_surface(distr_surface);
         MicrofacetDistribution distr_internal(m_type, m_alpha_u_internal->eval_1(si, active), m_alpha_v_internal->eval_1(si, active), m_sample_visible);
         MicrofacetDistribution sample_distr_internal(distr_internal);
-        
+
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        // active &= cos_theta_i != 0.f; # これがあるとエラーになるので消した
+        // active &= cos_theta_i != 0.f; // != がエラーの原因？
         
         if (unlikely(!m_sample_visible)) {  // Walter's trick
             sample_distr_surface.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
@@ -609,47 +650,74 @@ public:
         Normal3f m1 = n, m2 = n, m3 = n, mo = n;    // sampled
         Vector3f wv2, wv3, wv4;
 
-        // Complex refractive index
+        // // Complex refractive index
         dr::Complex<UnpolarizedSpectrum> base_eta_k(m_eta_base->eval(si, active),
                                                 m_k_base->eval(si, active));
         if(dr::any_or<true>(selected_t)) {
             // ベース法線決定
-            auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, rng);
-            auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, rng);
-            r1 = rand(rng);
+            // auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, rng);
+            // auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, rng);
+            r2 = Point2f(distr(engine), distr(engine));
+            auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, r2);
+            r2 = Point2f(distr(engine), distr(engine));
+            auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, r2);
+            // auto [a1, a2, a3, pa] = sampleRoute(wv1, m_pa, m_qa, m_ra, sample2);
+            // auto [b1, b2, b3, pb] = sampleRoute(wv1, m_pb, m_qb, m_rb, sample2);
+        
+            // bs.wo = si.wi;
+            // bs.wo[selected_r] = reflect(si.wi, mi);
+            // bs.pdf = 1.f;
+            // bs.eta = 1.f;
+            // bs.sampled_type = BSDFFlags::GlossyReflection;
+            // bs.sampled_component = UInt32(0);
+
+            // weight = 1.0f;
+
+            // r1 = rand(rng);
+            r1 = distr(engine);
             Mask elemA = (r1 <= 0.5f) && active;
             Mask elemB = (r1 >  0.5f) && active;
+            // Mask elemA = (sample1 <= 0.5f) && active;
+            // Mask elemB = (sample1 >  0.5f) && active;
             n1 = dr::select(elemA, a1, b1);
             n2 = dr::select(elemA, a2, b2);
             n3 = dr::select(elemA, a3, b3);
             pathProb = dr::select(elemA, pa, pb);
 
             // n1反射
-            r2 = rand2(rng);
+            // r2 = rand2(rng);
+            r2 = Point2f(distr(engine), distr(engine));
             std::tie(m1, D1) = sample_distr_internal.sample(rotateVector(-wv1, n1, n), r2);
+            // std::tie(m1, D1) = sample_distr_internal.sample(rotateVector(-wv1, n1, n), sample2);
             m1 = rotateVector(m1, n, n1);
             F1 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-wv1, m1)), base_eta_k);
             wv2 = reflect(-wv1, m1);
             // printf("%f, %f, %f, %f, %f\n", mag(wv1), mag(rotateVector(-wv1, n1, n)), mag(std::get<0>(sample_distr_internal.sample(rotateVector(-wv1, n1, n), r2))), mag(m1), mag(wv2));
 
             // n2反射
-            r2 = rand2(rng);
+            // r2 = rand2(rng);
+            r2 = Point2f(distr(engine), distr(engine));
             std::tie(m2, D2) = sample_distr_internal.sample(rotateVector(-wv2, n2, n), r2);
+            // std::tie(m2, D2) = sample_distr_internal.sample(rotateVector(-wv2, n2, n), sample2);
             m2 = rotateVector(m2, n, n2);
             F2 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-wv2, m2)), base_eta_k);
             wv3 = reflect(-wv2, m2);
 
             // n3反射
-            r2 = rand2(rng);
+            // r2 = rand2(rng);
+            r2 = Point2f(distr(engine), distr(engine));
             std::tie(m3, D3) = sample_distr_internal.sample(rotateVector(-wv3, n3, n), r2);
+            // std::tie(m3, D3) = sample_distr_internal.sample(rotateVector(-wv3, n3, n), sample2);
             m3 = rotateVector(m3, n, n3);
             F3 = fresnel_conductor(UnpolarizedSpectrum(dr::dot(-wv3, m3)), base_eta_k);
             wv4 = reflect(-wv3, m3);
 
             // n透過
             Float eta_v4_o, eta_o_v4, cos_theta_o;
-            r2 = rand2(rng);
+            // r2 = rand2(rng);
+            r2 = Point2f(distr(engine), distr(engine));
             std::tie(mo, Do) = sample_distr_surface.sample(wv4, r2);
+            // std::tie(mo, Do) = sample_distr_surface.sample(wv4, sample2);
             std::tie(Fo, cos_theta_o, eta_v4_o, eta_o_v4) = fresnel(dr::dot(-wv4, mo), Float(m_eta));
             wo_rr = refract(-wv4, mo, cos_theta_o, eta_o_v4);
             // printf("(%f, %f, %f)check: rotate from(%f, %f, %f)to(%f, %f, %f) by <%f, %f, %f>\n", m2.x(), m2.y(), m2.z(), -wv2.x(), -wv2.y(), -wv2.z(), rotateVector(-wv2, n2, n).x(), rotateVector(-wv2, n2, n).y(), rotateVector(-wv2, n2, n).z(), n2.x(), n2.y(), n2.z());
@@ -669,7 +737,8 @@ public:
         F3 = dr::select(correctRRpath, F3, 0.f);
         Fo = dr::select(correctRRpath, Fo, 0.f);
 
-        r1 = rand(rng);
+        // r1 = rand(rng);
+        // r1 = distr(engine);
 
         // ERA, 再帰反射可能な領域。拡散と再帰反射の割合を制御する
         Float era_cos_i = Frame3f::cos_theta(-wv1);
@@ -677,6 +746,7 @@ public:
         Float era = ERA(era_cos_i, era_sin_phi, era_cos_phi);
 
         selected_rr = !selected_r && (r1<=(1.f-Fi)*(1.f-Fo) * era) && correctRRpath && active;
+        // selected_rr = !selected_r && (sample1<=(1.f-Fi)*(1.f-Fo) * era) && correctRRpath && active;
         selected_d = !selected_r && !selected_rr && active;
 
         // printf("[%f, %f, %f]", r1, Fi, (1.f-Fi)*F1*F2*F3*(1.f-Fo));
@@ -785,8 +855,10 @@ public:
         // 拡散
         if (dr::any_or<true>(selected_d)) {
             // printf("D");
-            r2 = rand2(rng);
+            // r2 = rand2(rng);
+            r2 = Point2f(distr(engine), distr(engine));
             Vector3f wo_diffuse = warp::square_to_cosine_hemisphere(r2);
+            // Vector3f wo_diffuse = warp::square_to_cosine_hemisphere(sample2);
             bs.wo[selected_d] = wo_diffuse;
             bs.pdf = dr::select(selected_d, (1.f-Fi) * (era * Fo * pathProb + (1.f-era)) * warp::square_to_cosine_hemisphere_pdf(wo_diffuse), bs.pdf);
             bs.eta = dr::select(selected_d, 1.f, bs.eta);

@@ -114,17 +114,36 @@ public:
      * \return
      *     The discrete index associated with the sample
      */
-    Index sample(Value value, Mask active = true) const {
+    // Index sample(Value value, Mask active = true) const {
+    //     MI_MASK_ARGUMENT(active);
+
+    //     value *= m_sum;
+
+    //     return dr::binary_search<Index>(
+    //         m_valid.x(), m_valid.y(),
+    //         [&](Index index) DRJIT_INLINE_LAMBDA {
+    //             return dr::gather<Value>(m_cdf, index, active) < value;
+    //         }
+    //     );
+
+    // }
+
+    Float sample(Value value, Mask active = true) const {
         MI_MASK_ARGUMENT(active);
 
         value *= m_sum;
 
-        return dr::binary_search<Index>(
+        Index point = dr::binary_search<Index>(
             m_valid.x(), m_valid.y(),
             [&](Index index) DRJIT_INLINE_LAMBDA {
                 return dr::gather<Value>(m_cdf, index, active) < value;
             }
         );
+
+        Float m_cdf_point = dr::gather<Value>(m_cdf, point, active);
+        Float m_cdf_point_plus1 = dr::gather<Value>(m_cdf, point+1, active);
+        Float t = (value - m_cdf_point) / (m_cdf_point_plus1 - m_cdf_point);
+        return point + t;
     }
 
     /**
