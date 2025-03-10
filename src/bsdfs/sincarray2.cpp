@@ -271,16 +271,18 @@ public:
         // offset = 0.f;
         // offset = 0.000400*dr::Pi<Float>;
         // float upper = 0.0001555555555554644, lower = 0.000700;
-        float upper = 0.0004000, lower = 0.000700;
+        // float upper = 0.0004000, lower = 0.000700;
         // float upper = 0.001000, lower = 0.001200;
         // float upper = 0.0001555, lower = 0.000255;
         // float upper = 0.0, lower = 0.0;
-        offset = (((upper - lower)/340)*(a - 540) + upper)*dr::Pi<Float>;
-        offset = dr::select(
-            offset >= 0.f,
-            offset,
-            Float(0.0)
-        );
+        // offset = (((upper - lower)/340)*(a - 540) + upper)*dr::Pi<Float>;
+        offset = 0.0001555555555554644*dr::Pi<Float>;
+        // offset = 0.000020000000006348273*dr::Pi<Float>;
+        // offset = dr::select(
+        //     offset >= 0.f,
+        //     offset,
+        //     Float(0.0)
+        // );
         // printf("%f\n", offsets[angle/5]);
         make_sincarray1(m_a.get()->max(), 2, angle);
         // make_sincarray1_multi(m_a.get()->max(), 2);
@@ -361,8 +363,8 @@ public:
         // Float del_theta = -dr::Pi<Float> / 2.0f + point*dr::Pi<Float>/N + offset + offset2;
         auto rng = setRandomGenerator(sample1*10000000);
         Float random1 = rand(rng);
-        Float del_theta = point*dr::Pi<Float>/(2.0*N) + (offset + offset2)*random1;
-        // Float del_theta = point*dr::Pi<Float>/(2.0*N) + (offset + offset2);
+        // Float del_theta = point*dr::Pi<Float>/(2.0*N) + (offset + offset2)*random1;
+        Float del_theta = point*dr::Pi<Float>/(2.0*N) + (offset + offset2);
         // Float del_theta = point*dr::Pi<Float>/(2.0*N) + offset2*sample1;
         // Float tan_theta = point*dr::Pi<Float>/(2.0f*N);
         // Float del_theta = point*dr::Pi<Float>/(2.0f*N);
@@ -383,7 +385,6 @@ public:
         bs.sampled_type =+ BSDFFlags::DiffuseReflection;
         bs.eta = 1.f;
         bs.pdf = 1.f;
-        bs.isBSSRDF = true;
 
         // BSSRDF
         // auto rng = setRandomGenerator(sample1*1000000);
@@ -391,17 +392,28 @@ public:
         Float r1 = rand(rng);
         Float r2 = rand(rng);
         float cornersize = m_cornersize.get()->max();
-        // Float shift = cornersize*r1;
-        // Float shift2 = cornersize*r2;
-        Float shift = cornersize;
+        Float shift = cornersize*r1;
+        Float shift2 = cornersize*r2;
+        // Float shift = cornersize;
         Float r3 = rand(rng);
-        Float theta = r3*dr::TwoPi<Float>;
+        Float theta = 2*r3*dr::Pi<Float>;
+        // Float theta = r3*360.0;
         // Float theta = del_phi + dr::Pi<Float>;
         // Float theta = del_phi;
         // Float theta = del_phi + dr::Pi<Float>;
-        bs.p = Point3f(shift*dr::cos(theta), shift*dr::sin(theta), 0.0);
-        // bs.p = p;
+
+        // 何故この書き方をしているのか。
+        // bs.p = Point3f(shift*dr::cos(theta), shift*dr::sin(theta), 0.0f);
+        // bs.p = Point3f(cornersize, 0.0f, 0.0f);
+        bs.p = Point3f(cornersize, cornersize, 0.0f);
+        // bs.p = Point3f(0.0f, 0.0f, -cornersize);
+        // bs.p = Point3f(shift*dr::cos(theta), 0.f, shift*dr::sin(theta));
+        // printf("si.p = %f, %f, %f\n", si.p.x(), si.p.y(), si.p.z());
         // bs.p = Point3f(shift*dr::cos(theta), shift2*dr::sin(theta), 0.0);
+        // bs.isBSSRDF = true;
+        // bs.p = 0.0*si.wi + Point3f(shift*dr::cos(theta), shift*dr::sin(theta), -1.0);
+        // bs.p = si.wi;
+        // bs.p = p;
 
 
         UnpolarizedSpectrum arg = m_a->eval(si, active)*(del_theta - offset - offset2);

@@ -18,6 +18,7 @@ MI_PY_EXPORT(BSDFSample) {
         .def_readwrite("eta", &BSDFSample3f::eta, D(BSDFSample3, eta))
         .def_readwrite("sampled_type", &BSDFSample3f::sampled_type, D(BSDFSample3, sampled_type))
         .def_readwrite("sampled_component", &BSDFSample3f::sampled_component, D(BSDFSample3, sampled_component))
+        .def_readwrite("p", &BSDFSample3f::p, D(BSDFSample3, p))
         .def_repr(BSDFSample3f);
 
     MI_PY_DRJIT_STRUCT(bs, BSDFSample3f, wo, pdf, eta, sampled_type, sampled_component);

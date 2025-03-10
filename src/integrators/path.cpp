@@ -233,9 +233,19 @@ public:
 
             bsdf_weight = si.to_world_mueller(bsdf_weight, -bsdf_sample.wo, si.wi);
 
+            // si.p.x() += bsdf_sample.p.x();
+            // si.p.y() += bsdf_sample.p.y();
+            // si.p.z() += bsdf_sample.p.z();
+            // if (bsdf_sample.p.x() != 0.0f) printf("before = %f, %f, %f\n", si.p.x(), si.p.y(), si.p.z());
+            si.p += bsdf_sample.p;
             ray = si.spawn_ray(si.to_world(bsdf_sample.wo));
+            // if (bsdf_sample.p.x() != 0.0f) printf("after = %f, %f, %f\n", si.p.x(), si.p.y(), si.p.z());
             // Point3f origin = ray.o + bsdf_sample.p;
-            // ray.o = origin;
+            // ray.o += bsdf_sample.p;
+            // if (bsdf_sample.p.x() != 0.f) {
+            //     printf("si.p = %f, %f, %f\n", si.p.x(), si.p.y(), si.p.z());
+            //     printf("o = %f, %f, %f\n", ray.o.x(), ray.o.y(), ray.o.z());
+            // }
             // ray.o = dr::select(
             //     bsdf_sample.isBSSRDF & active,
             //     bsdf_sample.p,

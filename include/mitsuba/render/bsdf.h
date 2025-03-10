@@ -209,11 +209,11 @@ template <typename Float, typename Spectrum> struct BSDFSample3 {
     /// Stores the component index that was sampled by \ref BSDF::sample()
     UInt32 sampled_component;
 
-    Bool isBSSRDF = false;
+    // Bool isBSSRDF = false;
     // Mask isBSSRDF;
 
-    // Point3f p = Point3f(0.0, 0.0, 0.0);
     Point3f p;
+    // Vector3f p;
 
     //! @}
     // =============================================================
@@ -237,13 +237,13 @@ template <typename Float, typename Spectrum> struct BSDFSample3 {
      */
     BSDFSample3(const Vector3f &wo)
         : wo(wo), pdf(0.f), eta(1.f), sampled_type(0),
-          sampled_component(uint32_t(-1)) { }
+          sampled_component(uint32_t(-1)), p(Point3f(0.f, 0.f, 0.f)) { }
 
 
     //! @}
     // =============================================================
 
-    DRJIT_STRUCT(BSDFSample3, wo, pdf, eta, sampled_type, sampled_component);
+    DRJIT_STRUCT(BSDFSample3, wo, pdf, eta, sampled_type, sampled_component, p);
 };
 
 
