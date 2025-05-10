@@ -75,7 +75,7 @@ public:
         Vector3f toNorm = dr::normalize(to);
         Float s = mag(dr::cross(fromNorm, toNorm));
         Float c = dr::dot(fromNorm, toNorm);
-        Vector3f result = c*vec + dr::dot(axis, vec)*(1-c)*axis + dr::cross(axis, vec)*s;
+        Vector3f result = c*vec + dr::dot(axis, vec)*(1-c)*axis + dr::cross(axis, vec);
         result = dr::normalize(result);
 
         return result;
@@ -88,10 +88,10 @@ public:
 
         for (int i = 0; i < N; ++i)
         {
-            ScalarFloat arg = a * 300*dr::tan((dr::Pi<Float>*i/(2.0f*N) - offset));
+            ScalarFloat arg = (a*300/dr::cos(offset)) * dr::tan((dr::Pi<Float>*i/(2.0f*N) - offset));
             ScalarFloat sincvalue = dr::pow(dr::sin(arg), expo) / dr::pow(arg, expo);
 
-            if (i >= 28000) sincvalue = 0.f;
+            // if (i >= 28000) sincvalue = 0.f;
             // printf("%d = %f ", i, sincvalue);
             sincvalue = dr::select(
                 dr::isinf(sincvalue),
@@ -112,7 +112,6 @@ public:
         }
 
         sum_rawPDF = sum;
-        ScalarFloat *m_data;
         m_data = &data[0]; // LUTの先頭ポインタ
         struct DiscreteDistribution<Float> dd(m_data, N);
         m_pdfdata = dd;
@@ -232,6 +231,7 @@ public:
         // ----- 出射光のサンプリング -----
         Float point;
         point = m_pdfdata.sample(sample2.y());
+        printf("point = %f\n", point);
         Float random2 = rand(rng), random3 = rand(rng);
         Float del_phi = 2.0*dr::Pi<Float> * random2; // 角度の差分にする
 
@@ -248,19 +248,24 @@ public:
 
         Vector3f norm = Vector3f(0.f, 0.f, 1.f);
         Vector3f wo = rotate(delvec, norm, si.wi);
+        // Vector3f wo = rotate(delvec, norm, norm);
         bs.wo = wo;
 
         bs.sampled_type =+ BSDFFlags::DiffuseReflection;
         bs.eta = 1.f;
 
-        Float arg_pdf = m_a->eval(si, active).x()*300*dr::tan((del_theta - offset));
-        Float sincvalue_pdf = dr::pow(dr::sin(arg_pdf), 2) / dr::pow(arg_pdf, 2);
-        sincvalue_pdf = dr::select(
-            dr::isinf(sincvalue_pdf),
-            ScalarFloat(1.0),
-            sincvalue_pdf
-        );
+        // Float arg_pdf = m_a->eval(si, active).x()*300*dr::tan((del_theta - offset));
+        // Float sincvalue_pdf = dr::pow(dr::sin(arg_pdf), 2) / dr::pow(arg_pdf, 2);
+        // sincvalue_pdf = dr::select(
+        //     dr::isinf(sincvalue_pdf),
+        //     ScalarFloat(1.0),
+        //     sincvalue_pdf
+        // );
+        // Float sincvalue = m_pdfdata.eval_pmf_floatindex(point, active)*sum_rawPDF;
+        // UnpolarizedSpectrum value = m_reflectance->eval(si, active)*sincvalue;
         UnpolarizedSpectrum value = m_reflectance->eval(si, active);
+        // printf("value = %f\n", value.x());
+        // bs.pdf = sincvalue;
         bs.pdf = 1.f;
 
         return {bs, depolarizer<Spectrum>(value) & (active && bs.pdf > 0.f)};
@@ -280,11 +285,11 @@ public:
               sin_theta_o = Frame3f::sin_theta(wo);
 
         Float cos_delta_theta = cos_theta_o*cos_theta_i + sin_theta_o*sin_theta_i;
-        Float delta_theta = acos(cos_delta_theta) - offset;
+        Float delta_theta = acos(cos_delta_theta);
 
         active &= cos_theta_i > 0.f && cos_theta_o > 0.f;
 
-        Float arg = m_a->eval(si, active).x()*(300*dr::tan(delta_theta - offset));
+        Float arg = (m_a->eval(si, active).x()*300/dr::cos(offset)) * dr::tan(delta_theta - offset);
         Float sincvalue = dr::pow(dr::sin(arg), 2) / dr::pow(arg, 2);
         sincvalue = dr::select(
             dr::isfinite(sincvalue),
@@ -313,17 +318,16 @@ public:
               sin_theta_o = Frame3f::sin_theta(wo);
 
         Float cos_delta_theta = cos_theta_o*cos_theta_i + sin_theta_o*sin_theta_i;
-        Float delta_theta = acos(cos_delta_theta) - offset;
+        Float delta_theta = acos(cos_delta_theta);
 
         Float a = m_a->eval(si, active).x();
-        Float arg = a*(300*dr::tan(delta_theta - offset));
+        Float arg = (a*300/dr::cos(offset)) * dr::tan(delta_theta - offset);
         Float sincvalue = dr::pow(dr::sin(arg), 2) / dr::pow(arg, 2);
         sincvalue = dr::select(
             dr::isfinite(sincvalue),
             sincvalue,
             ScalarFloat(1.0)
         );
-        Float cos_theta_del = cos_theta_i*cos_theta_o + sin_theta_i*sin_theta_o;
         return sincvalue;
     }
 
@@ -343,19 +347,23 @@ public:
                   sin_theta_o = Frame3f::sin_theta(wo);
 
             Float cos_delta_theta = cos_theta_o*cos_theta_i + sin_theta_o*sin_theta_i;
-            Float delta_theta = acos(cos_delta_theta) - offset;
+            Float delta_theta = acos(cos_delta_theta);
 
             active &= cos_theta_i > 0.f && cos_theta_o > 0.f;
 
-            Float arg_Float = m_a->eval(si, active).x()*(300*dr::tan(delta_theta - offset));
+            Float arg_Float = (m_a->eval(si, active).x()*300/dr::cos(offset)) * dr::tan(delta_theta - offset);
             Float sincvalue_pdf = dr::pow(dr::sin(arg_Float), 2) / dr::pow(arg_Float, 2);
             sincvalue_pdf = dr::select(
                 dr::isfinite(sincvalue_pdf),
                 sincvalue_pdf,
                 ScalarFloat(1.0)
             );
-            UnpolarizedSpectrum value = m_reflectance->eval(si, active) * sincvalue_pdf;
-            Float pdf = sincvalue_pdf;
+            // UnpolarizedSpectrum value = m_reflectance->eval(si, active) * sincvalue_pdf;
+            UnpolarizedSpectrum value = m_reflectance->eval(si, active);
+            // printf("value = %f\n", value.x());
+            // printf("value = %f\n", sincvalue_pdf);
+            // Float pdf = sincvalue_pdf;
+            Float pdf = 1.f;
 
             return {depolarizer<Spectrum>(value) & active, dr::select(active, pdf, 0.f)};
         }
@@ -379,6 +387,7 @@ private:
     float sum_rawPDF;
     ref<Texture> m_reflectance;
     ref<Texture> m_a;
+    ScalarFloat *m_data;
     DiscreteDistribution<Float> m_pdfdata;
     DiscreteDistribution<Float> m_rayshiftLUT;
     ScalarFloat offset;
