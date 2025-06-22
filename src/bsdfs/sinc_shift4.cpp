@@ -19,6 +19,8 @@
 #include <iterator>
 #include <string>
 #include "nlohmann/json.hpp"
+#include <vector>
+#include <drjit/dynamic.h>
 using namespace std;
 using json = nlohmann::json;
 
@@ -31,6 +33,7 @@ class sinc_shift4 final : public BSDF<Float, Spectrum>
 // 関数（コンストラクタやデストラクタ、その他）
 public:
     using Index = dr::uint32_array_t<Float>;
+
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture)
 
@@ -50,6 +53,8 @@ public:
         offset = 0.0;
 
         m_isEstimation = 1;
+
+        make_rayshift_array();
     }
 
     // class - rotations
@@ -79,36 +84,55 @@ public:
 
     void make_sincarray1(float a, int expo, int angle)
     {
-        ScalarFloat data[N];
-        int i = 0, idx = 0;
+        ScalarFloat data[N*10];
+        ScalarVector2u size(N, 10);
+        int idx = 0;
+        float sums[10];
 
-        for (int i = 0; i < N; ++i)
+        for (int i = 0; i < 10; ++i)
         {
-            ScalarFloat arg = (a*300/dr::cos(offset)) * dr::tan((dr::Pi<Float>*i/(2.0f*N) - offset));
-            ScalarFloat sincvalue = dr::pow(dr::sin(arg), expo) / dr::pow(arg, expo);
+            a = alist[i];
+            sums[i] = 0.0f;
+            for (int j = 0; j < N; ++j) {
+                ScalarFloat arg = (a*300/dr::cos(offset)) * dr::tan((dr::Pi<Float>*j/(2.0f*N) - offset));
+                ScalarFloat sincvalue = dr::pow(dr::sin(arg), expo) / dr::pow(arg, expo);
 
-            sincvalue = dr::select(
-                dr::isfinite(sincvalue),
-                dr::abs(sincvalue),
-                ScalarFloat(1.0)
-            );
-            data[i] = sincvalue;
+                sincvalue = dr::select(
+                    dr::isfinite(sincvalue),
+                    dr::abs(sincvalue),
+                    ScalarFloat(1.0)
+                );
+                if (j >= 28000) sincvalue = 0.0f;
+                // data[i*size.x() + j] = sincvalue;
+                data[idx++] = sincvalue;
+                sums[i] += sincvalue;
+            }
+            printf("a[%d] = %f, sum = %f", i, a, sums[i]);
         }
+
         // 正規化（ごり押し）
-        float sum = 0.0f;
-        for (int i = 0; i < N; ++i)
-        {
-            sum += data[i];
-        }
-        for (int i = 0; i < N; ++i)
-        {
-            data[i] /= sum;
+        idx = 0;
+        for (int i = 0; i < 10; ++i) {
+            for (int j = 0; j < N; ++j)
+            {
+                data[idx++] /= sums[i];
+                if (j < 20) printf("data[%d] = %f\n", i*N+j, data[i*N+j]);
+            }
         }
 
-        sum_rawPDF = sum;
-        m_data = &data[0]; // LUTの先頭ポインタ
-        struct DiscreteDistribution<Float> dd(m_data, N);
+        // m_data = &data[0]; // LUTの先頭ポインタ
+        // struct DiscreteDistribution<Float> dd(m_data, N);
+        // m_pdfdata = dd;
+        printf("size in make x = %d, y = %d\n", size.x(), size.y());
+        DiscreteDistribution2D<Float, 2> dd(&data[0], size);
         m_pdfdata = dd;
+
+        float reflist_float[10] = {0.33505, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973};
+        ScalarFloat data2[10];
+        for (int i = 0; i < 9; ++i)
+            data2[i] = reflist_float[i];
+        DiscreteDistribution<Float> rl(&data2[0], 10);
+        reflist = rl;
     }
 
     // TODO 角度ごとのLUTを保存するように書き替える
@@ -131,25 +155,24 @@ public:
             cout << "ファイルの読み込みに失敗しました" << endl;
         }
 
-        angle_index = angle / 5;
-        int num_i = m_rayshift_list.size();
-        // int num_j = m_rayshift_list[0].size();
-        int num_j = m_rayshift_list[angle_index].size();
-        // printf("angle_index = %d\n", angle_index);
-        // printf("data[idx] = %f\n", m_rayshift_list[angle_index][0]);
-        ScalarFloat data[num_j];
-        int i = 0, idx = 0;
-        for (int j = 0; j < num_j; ++j) {
-            data[idx++] = m_rayshift_list[angle_index][j];
+        // int num_i = m_rayshift_list.size();
+        int num_i = 10;
+        int num_j = m_rayshift_list[0].size();
+        ScalarFloat data[num_i*num_j];
+        
+        int idx = 0;
+        for (int i = 0; i < 10; ++i) {
+            for (int j = 0; j < num_j; ++j) {
+                if (j == 0) printf("m_rayshift_list[%d][%d] = %f\n", i, j, m_rayshift_list[i][j]);
+                data[idx++] = m_rayshift_list[i][j];
+            }
         }
-        // printf("\n");
-        printf("rayshift_array[0] = %f, angle = %d, angle_index = %d\n", data[0], angle, angle_index);
-
+        printf("num_i = %d, num_j = %d, idx = %d\n", num_i, num_j, idx);
         ScalarVector2u size(num_j, num_i);
-        struct DiscreteDistribution<Float> dd(&data[0], num_j);
-        m_rayshiftLUT = dd;
+        // m_rayshiftLUT_list = dd;
+        DiscreteDistribution2D<Float, 2> dd(&data[0], size);
+        m_rayshiftLUT_list = dd;
         rayshift_N = num_j;
-        printf("rayshift_N = %d\n", num_j);
     }
 
     void traverse(TraversalCallback *callback) override
@@ -163,14 +186,10 @@ public:
         angle = static_cast<int>(m_angle.get()->max());
 
         angle_index = angle / 5.0;
-        if (m_isEstimation) {
-            a = m_a.get()->max(); reflectance = m_reflectance.get()->max();
-        } else {
-            a = alist[angle_index]; reflectance = reflist[angle_index];
-        }
+        a = m_a.get()->max(); reflectance = m_reflectance.get()->max();
         
         make_sincarray1(a, 2, angle);
-        make_rayshift_array();
+        // make_rayshift_array();
     }
 
     float generate_random() const
@@ -223,30 +242,42 @@ public:
 
         // BSSRDF
         Point3f p = si.p; Point2f r2f = rand2(rng);
-        Float sampled_p2f; Float pdfvalue; Point2f sampled;
+        Float sampled_p1f; Float pdfvalue; Float sampled;
         Float r1 = rand(rng); Float r2 = rand(rng);
         // sampled_p2f = m_rayshiftLUT.sample(r1);
-        sampled_p2f = m_rayshiftLUT.sample(sample1);
+        UInt32 index = (theta_i * 180.0 / dr::Pi<Float>) / 5.0f;
+        index = dr::select(index >= 50, 45, index);
+        index = dr::select(index < 0, 0, index);
+        // UInt32 thetai_index = theta_i;
+        printf("cos(theta_i) = %f\n", cos_theta_i);
+        printf("index = %d\n", index);
 
+        // std::cout << "cos_theta_i = " << cos_theta_i << "index = " << index << std::endl;
+        std::tie(sampled_p1f, pdfvalue, sampled) = m_rayshiftLUT_list.sample1D(sample1, index, active);
+        // sampled_p1f = 1.0f;
+        
         float cornersize = m_cornersize.get()->max();
         float shiftoffset = m_shiftoffset.get()->max();
-        Float shift = (cornersize*sampled_p2f*1.50f)/rayshift_N; // TODO あとでちゃんとここを作る
+        Float shift = (cornersize*sampled_p1f*1.50f)/rayshift_N; // TODO あとでちゃんとここを作る
         Float r3 = rand(rng);
         Float theta = 2*r3*dr::Pi<Float>;
 
         bs.p = Point3f(shift*dr::cos(theta), shift*dr::sin(theta), shiftoffset);
 
         // ----- 出射光のサンプリング -----
-        Float point;
-        point = m_pdfdata.sample(sample2.y());
+        Float point; Float sincvalue; Float sample;
+        std::tie(point, sincvalue, sample) = m_pdfdata.sample1D(sample2.y(), index, active);
+        // std::tie(point, sincvalue, sample) = m_pdfdata.sample1D(sample2.y(), 9, active);
         point = dr::select(point >= 0.f, point, 0.f); // point < 0のとき0にする
         Float random2 = rand(rng), random3 = rand(rng);
         Float del_phi = 2.0*dr::Pi<Float> * random2; // 角度の差分にする
+        // printf("point = %f\n", point);
 
         Float random1 = rand(rng);
         Float offset2 = 0.0001555555555554644*dr::Pi<Float>;
         Float del_theta = dr::Pi<Float>*point/(2.0*N) + offset2;
         // Float del_theta = dr::Pi<Float>*point/(2.0*N);
+        // Float del_theta = 0.f;
 
         Float del_phi_offset = (2.0f*dr::Pi<Float>)*random3; // 角度の差分にする
         Float cos_offset_phi = dr::cos(del_phi_offset), sin_offset_phi = dr::sin(del_phi_offset);
@@ -263,8 +294,11 @@ public:
         bs.sampled_type =+ BSDFFlags::DiffuseReflection;
         bs.eta = 1.f;
 
-        UnpolarizedSpectrum value = m_reflectance->eval(si, active);
+        Float ref = reflist.eval_pmf(index, active);
+        UnpolarizedSpectrum value = Vector3f(ref, ref, ref);
+        // UnpolarizedSpectrum value = m_reflectance->eval(si, active);
         bs.pdf = 1.f;
+        // printf("value.x = %f\n", m_reflectance->eval(si, active).x());
 
         return {bs, depolarizer<Spectrum>(value) & (active && bs.pdf > 0.f)};
     }
@@ -400,21 +434,25 @@ private:
     uint32_t M; // LUTのphiサイズ
     uint32_t N; // LUTのthetaサイズ
     uint32_t rayshift_N; // rayshift_LUTのphiサイズ
-    float sum_rawPDF;
     ref<Texture> m_reflectance;
     ref<Texture> m_a;
     float a, reflectance;
     int angle, angle_index;
     ScalarFloat *m_data;
-    DiscreteDistribution<Float> m_pdfdata;
-    DiscreteDistribution<Float> m_rayshiftLUT;
+    // DiscreteDistribution<Float> m_pdfdata;
+    DiscreteDistribution2D<Float, 2> m_pdfdata;
+    // DiscreteDistribution<Float> m_rayshiftLUT;
+    DiscreteDistribution2D<Float, 2> m_rayshiftLUT_list;
     ScalarFloat offset;
     ref<Texture> m_angle;
     ref<Texture> m_cornersize;
     ref<Texture> m_shiftoffset;
     bool m_isEstimation;
-    float alist[10] = {9.93020, 7.88426, 7.84838, 7.15263, 7.38482, 5.10610, 3.51115, 2.45607, 1.68079, 1.17931};
-    float reflist[10] = {0.33505, 0.296091, 0.28343, 0.26988, 0.26051, 0.21822, 0.16955, 0.15701, 0.15030, 0.10973};
+    // float alist[10] = {9.93020, 7.88426, 7.84838, 7.15263, 7.38482, 5.10610, 3.51115, 2.45607, 1.68079, 1.17931};
+    float alist[10] = {9.93020, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9};
+    // float reflist[10] = {0.33505, 0.296091, 0.28343, 0.26988, 0.26051, 0.21822, 0.16955, 0.15701, 0.15030, 0.10973};
+    DiscreteDistribution<Float> reflist;
+    // float reflist[10] = {0.33505, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973};
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(sinc_shift4, BSDF)
