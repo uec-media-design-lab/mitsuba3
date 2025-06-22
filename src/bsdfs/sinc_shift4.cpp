@@ -11,6 +11,8 @@
 
 #include <mitsuba/render/sampler.h>
 
+#include <mitsuba/render/microfacet.h>
+
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -39,22 +41,90 @@ public:
 
     sinc_shift4(const Properties &props) : Base(props)
     {
-        m_flags = BSDFFlags::DiffuseReflection | BSDFFlags::FrontSide;
+        // ------ 表面反射光関係 -------
+        // 表面の反射率
+        if (props.has_property("specular_reflectance"))
+            m_specular_reflectance   = props.texture<Texture>("specular_reflectance", 1.f);
+
+        // 表面の透過率
+        if (props.has_property("specular_transmittance"))
+            m_specular_transmittance = props.texture<Texture>("specular_transmittance", 1.f);
+
+        // 屈折率
+        ScalarFloat int_ior = lookup_ior(props, "int_ior", "bk7");
+        ScalarFloat ext_ior = lookup_ior(props, "ext_ior", "air");
+        if (int_ior < 0.f || ext_ior < 0.f || int_ior == ext_ior)
+            Throw("The interior and exterior indices of "
+                  "refraction must be positive and differ!");
+        m_eta = int_ior / ext_ior;
+        m_inv_eta = ext_ior / int_ior;
+
+        // Microfacet分布
+        if (props.has_property("distribution")) {
+            std::string distr = string::to_lower(props.string("distribution"));
+            if (distr == "beckmann")
+                m_type = MicrofacetType::Beckmann;
+            else if (distr == "ggx")
+                m_type = MicrofacetType::GGX;
+            else
+                Throw("Specified an invalid distribution \"%s\", must be "
+                      "\"beckmann\" or \"ggx\"!", distr.c_str());
+        } else {
+            m_type = MicrofacetType::Beckmann;
+        }
+
+        // 可視（Smith）
+        m_sample_visible = props.get<bool>("sample_visible", true);
+
+        // 表面の粗さ
+        if (props.has_property("alpha_u") || props.has_property("alpha_v")) {
+            if (!props.has_property("alpha_u") || !props.has_property("alpha_v"))
+                Throw("Microfacet model: both 'alpha_u' and 'alpha_v' must be specified.");
+            if (props.has_property("alpha"))
+                Throw("Microfacet model: please specify"
+                      "either 'alpha' or 'alpha_u'/'alpha_v'.");
+            m_alpha_u = props.texture<Texture>("alpha_u");
+            m_alpha_v = props.texture<Texture>("alpha_v");
+        } else {
+            m_alpha_u = m_alpha_v = props.texture<Texture>("alpha", 0.1f);
+        }
+
+        BSDFFlags extra = (m_alpha_u != m_alpha_v) ? BSDFFlags::Anisotropic : BSDFFlags(0);
+        m_components.push_back(BSDFFlags::GlossyReflection | BSDFFlags::FrontSide |
+                               BSDFFlags::BackSide | extra);
+        m_components.push_back(BSDFFlags::GlossyTransmission | BSDFFlags::FrontSide |
+                               BSDFFlags::BackSide | BSDFFlags::NonSymmetric | extra);
+        m_flags = m_components[0] | m_components[1];
+
+        parameters_changed();
+
+        // ------ 再帰反射光関係 -------
+        m_flags = m_flags | BSDFFlags::DiffuseReflection | BSDFFlags::FrontSide;
         dr::set_attr(this, "flags", m_flags);
         m_components.push_back(m_flags);
         
+        // 反射率や拡がり角パラメータ、コーナーサイズなど
         m_reflectance = props.texture<Texture>("reflectance", 1.f);
         m_a = props.texture<Texture>("a", 1.f);
         m_angle = props.texture<Texture>("angle", 0.f);
         m_cornersize = props.texture<Texture>("cornersize", 0.f);
         m_shiftoffset = props.texture<Texture>("shiftoffset", 0.f);
 
+        m_sample_visible = props.get<bool>("sample_visible", true);
+
+        // sincLUTのサイズ（１つの角度に対して）
         M = 1; N = 30000;
         offset = 0.0;
 
         m_isEstimation = 1;
 
+        // 光線シフト分布の作成
         make_rayshift_array();
+    }
+
+    void parameters_changed(const std::vector<std::string> &/*keys*/ = {}) override {
+        m_inv_eta = dr::rcp(m_eta);
+        dr::make_opaque(m_eta, m_inv_eta);
     }
 
     // class - rotations
@@ -103,7 +173,6 @@ public:
                     ScalarFloat(1.0)
                 );
                 if (j >= 28000) sincvalue = 0.0f;
-                // data[i*size.x() + j] = sincvalue;
                 data[idx++] = sincvalue;
                 sums[i] += sincvalue;
             }
@@ -120,14 +189,11 @@ public:
             }
         }
 
-        // m_data = &data[0]; // LUTの先頭ポインタ
-        // struct DiscreteDistribution<Float> dd(m_data, N);
-        // m_pdfdata = dd;
         printf("size in make x = %d, y = %d\n", size.x(), size.y());
         DiscreteDistribution2D<Float, 2> dd(&data[0], size);
         m_pdfdata = dd;
 
-        float reflist_float[10] = {0.33505, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973};
+        float reflist_float[10] = {0.3149740397930145, 0.31731319427490234, 0.303494393825531, 0.2993064522743225, 0.2851271331310272, 0.26412859559059143, 0.22004221379756927, 0.21191012859344482, 0.20523042976856232};
         ScalarFloat data2[10];
         for (int i = 0; i < 9; ++i)
             data2[i] = reflist_float[i];
@@ -155,7 +221,6 @@ public:
             cout << "ファイルの読み込みに失敗しました" << endl;
         }
 
-        // int num_i = m_rayshift_list.size();
         int num_i = 10;
         int num_j = m_rayshift_list[0].size();
         ScalarFloat data[num_i*num_j];
@@ -169,7 +234,6 @@ public:
         }
         printf("num_i = %d, num_j = %d, idx = %d\n", num_i, num_j, idx);
         ScalarVector2u size(num_j, num_i);
-        // m_rayshiftLUT_list = dd;
         DiscreteDistribution2D<Float, 2> dd(&data[0], size);
         m_rayshiftLUT_list = dd;
         rayshift_N = num_j;
@@ -177,6 +241,20 @@ public:
 
     void traverse(TraversalCallback *callback) override
     {
+        // 表面反射光関係
+        callback->put_parameter("eta", m_eta, ParamFlags::Differentiable | ParamFlags::Discontinuous);
+        if (!has_flag(m_flags, BSDFFlags::Anisotropic))
+            callback->put_object("alpha",                  m_alpha_u.get(),                ParamFlags::Differentiable | ParamFlags::Discontinuous);
+        else {
+            callback->put_object("alpha_u",                m_alpha_u.get(),                ParamFlags::Differentiable | ParamFlags::Discontinuous);
+            callback->put_object("alpha_v",                m_alpha_v.get(),                ParamFlags::Differentiable | ParamFlags::Discontinuous);
+        }
+        if (m_specular_reflectance)
+            callback->put_object("specular_reflectance",   m_specular_reflectance.get(),   +ParamFlags::Differentiable);
+        if (m_specular_transmittance)
+            callback->put_object("specular_transmittance", m_specular_transmittance.get(), +ParamFlags::Differentiable);
+        
+        // 再帰反射光関係
         callback->put_object("reflectance", m_reflectance.get(), ParamFlags::Differentiable | ParamFlags::Discontinuous);
         callback->put_object("a", m_a.get(), ParamFlags::Differentiable | ParamFlags::Discontinuous);
         callback->put_object("angle", m_angle.get(), ParamFlags::Differentiable | ParamFlags::Discontinuous);
@@ -189,7 +267,6 @@ public:
         a = m_a.get()->max(); reflectance = m_reflectance.get()->max();
         
         make_sincarray1(a, 2, angle);
-        // make_rayshift_array();
     }
 
     float generate_random() const
@@ -240,21 +317,120 @@ public:
 
         auto rng = setRandomGenerator(sample1*10000000);
 
+        // ----------- 表面反射光 --------------
+        // MicrofacetDistribution distr(m_type,
+        //                              m_alpha_u->eval_1(si, active),
+        //                              m_alpha_v->eval_1(si, active),
+        //                              m_sample_visible);
+        // // Walter, et al
+        // MicrofacetDistribution sample_distr(distr);
+        // if (unlikely(!m_sample_visible))
+        //     sample_distr.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
+
+        // // Microfacet法線をサンプリング
+        // Normal3f m;
+        // std::tie(m, bs.pdf) =
+        //     sample_distr.sample(dr::mulsign(si.wi, cos_theta_i), sample2);
+        // active &= dr::neq(bs.pdf, 0.f);
+
+        // auto [F, cos_theta_t, eta_it, eta_ti] =
+        //     fresnel(dr::dot(si.wi, m), m_eta);
+
+        // // Select the lobe to be sampled
+        // UnpolarizedSpectrum weight;
+        // Mask selected_r, selected_t;
+        // if (likely(has_reflection && has_transmission)) {
+        //     selected_r = sample1 <= F && active;
+        //     weight = 1.f;
+        //     /* For differentiable variants, lobe choice has to be detached to avoid bias.
+        //         Sampling weights should be computed accordingly. */
+        //     if constexpr (dr::is_diff_v<Float>) {
+        //         if (dr::grad_enabled(F)) {
+        //             weight = dr::select(selected_r, F / dr::detach(F), (1 - F) / (1.f - dr::detach(F)));
+        //         }
+        //     }
+        //     bs.pdf *= dr::detach(dr::select(selected_r, F, 1.f - F));
+        // } else {
+        //     if (has_reflection || has_transmission) {
+        //         selected_r = Mask(has_reflection) && active;
+        //         weight = has_reflection ? F : (1.f - F);
+        //     } else {
+        //         return { bs, 0.f };
+        //     }
+        // }
+
+        // selected_t = !selected_r && active;
+
+        // bs.eta               = dr::select(selected_r, Float(1.f), eta_it);
+        // bs.sampled_component = dr::select(selected_r, UInt32(0), UInt32(1));
+        // bs.sampled_type      = dr::select(selected_r,
+        //                               UInt32(+BSDFFlags::GlossyReflection),
+        //                               UInt32(+BSDFFlags::GlossyTransmission));
+
+        // Float dwh_dwo = 0.f;
+
+        // // Reflection sampling
+        // if (dr::any_or<true>(selected_r)) {
+        //     // Perfect specular reflection based on the microfacet normal
+        //     bs.wo[selected_r] = reflect(si.wi, m);
+
+        //     if (m_specular_reflectance)
+        //         weight[selected_r] *= m_specular_reflectance->eval(si, selected_r);
+
+        //     // Jacobian of the half-direction mapping
+        //     dwh_dwo = dr::rcp(4.f * dr::dot(bs.wo, m));
+        // }
+
+        // // Transmission sampling
+        // if (dr::any_or<true>(selected_t)) {
+        //     // Perfect specular transmission based on the microfacet normal
+        //     bs.wo[selected_t]  = refract(si.wi, m, cos_theta_t, eta_ti);
+
+        //     /* For transmission, radiance must be scaled to account for the solid
+        //        angle compression that occurs when crossing the interface. */
+        //     UnpolarizedSpectrum factor = (ctx.mode == TransportMode::Radiance) ? dr::sqr(eta_ti) : Float(1.f);
+
+        //     if (m_specular_transmittance)
+        //         factor *= m_specular_transmittance->eval(si, selected_t);
+
+        //     weight[selected_t] *= factor;
+
+        //     // Jacobian of the half-direction mapping
+        //     dr::masked(dwh_dwo, selected_t) =
+        //         (dr::sqr(bs.eta) * dr::dot(bs.wo, m)) /
+        //          dr::sqr(dr::dot(si.wi, m) + bs.eta * dr::dot(bs.wo, m));
+        // }
+
+        // if (likely(m_sample_visible))
+        //     weight *= distr.smith_g1(bs.wo, m);
+        // else
+        //     weight *= distr.G(si.wi, bs.wo, m) * dr::dot(si.wi, m) /
+        //               (cos_theta_i * Frame3f::cos_theta(m));
+
+        // bs.pdf *= dr::abs(dwh_dwo);
+
+        // // return { bs, depolarizer<Spectrum>(weight) & active };
+
+        
+        // --------------- 再帰反射光 --------------------
+        UInt32 index = (theta_i * 180.0 / dr::Pi<Float>) / 5.0f;
+        index = dr::select(index >= 10, 9, index);
+        index = dr::select(index < 0, 0, index);
+        Float index_float = (theta_i * 180.0 / dr::Pi<Float>) / 5.0f;
+        index_float = dr::select(index_float >= 10.0, 9.0, index_float);
+        index_float = dr::select(index < 0.0, 0.0, index_float);
+        Float index_decimal = index_float - index;
+
         // BSSRDF
         Point3f p = si.p; Point2f r2f = rand2(rng);
         Float sampled_p1f; Float pdfvalue; Float sampled;
         Float r1 = rand(rng); Float r2 = rand(rng);
         // sampled_p2f = m_rayshiftLUT.sample(r1);
-        UInt32 index = (theta_i * 180.0 / dr::Pi<Float>) / 5.0f;
-        index = dr::select(index >= 50, 45, index);
-        index = dr::select(index < 0, 0, index);
-        // UInt32 thetai_index = theta_i;
+        
         printf("cos(theta_i) = %f\n", cos_theta_i);
         printf("index = %d\n", index);
 
-        // std::cout << "cos_theta_i = " << cos_theta_i << "index = " << index << std::endl;
         std::tie(sampled_p1f, pdfvalue, sampled) = m_rayshiftLUT_list.sample1D(sample1, index, active);
-        // sampled_p1f = 1.0f;
         
         float cornersize = m_cornersize.get()->max();
         float shiftoffset = m_shiftoffset.get()->max();
@@ -265,19 +441,20 @@ public:
         bs.p = Point3f(shift*dr::cos(theta), shift*dr::sin(theta), shiftoffset);
 
         // ----- 出射光のサンプリング -----
-        Float point; Float sincvalue; Float sample;
+        Float point; Float sincvalue; Float sample; Float point_p1; Float sincvalue_p1; Float sample_p1;
         std::tie(point, sincvalue, sample) = m_pdfdata.sample1D(sample2.y(), index, active);
-        // std::tie(point, sincvalue, sample) = m_pdfdata.sample1D(sample2.y(), 9, active);
         point = dr::select(point >= 0.f, point, 0.f); // point < 0のとき0にする
+        std::tie(point_p1, sincvalue_p1, sample_p1) = dr::select(index < 9, m_pdfdata.sample1D(sample, index+1, active), m_pdfdata.
+        sample1D(sample, index, active));
+        point_p1 = dr::select(point_p1 >= 0.f, point_p1, 0.f); // point < 0のとき0にする
+        Float point_blend = point*(1-index_decimal) + point_p1*index_decimal;
+        
         Float random2 = rand(rng), random3 = rand(rng);
         Float del_phi = 2.0*dr::Pi<Float> * random2; // 角度の差分にする
-        // printf("point = %f\n", point);
 
         Float random1 = rand(rng);
         Float offset2 = 0.0001555555555554644*dr::Pi<Float>;
-        Float del_theta = dr::Pi<Float>*point/(2.0*N) + offset2;
-        // Float del_theta = dr::Pi<Float>*point/(2.0*N);
-        // Float del_theta = 0.f;
+        Float del_theta = dr::Pi<Float>*point_blend/(2.0*N) + offset2;
 
         Float del_phi_offset = (2.0f*dr::Pi<Float>)*random3; // 角度の差分にする
         Float cos_offset_phi = dr::cos(del_phi_offset), sin_offset_phi = dr::sin(del_phi_offset);
@@ -295,10 +472,11 @@ public:
         bs.eta = 1.f;
 
         Float ref = reflist.eval_pmf(index, active);
-        UnpolarizedSpectrum value = Vector3f(ref, ref, ref);
+        Float ref_p1 = dr::select(index < 9, reflist.eval_pmf(index+1, active), reflist.eval_pmf(9, active));
+        Float ref_blend = ref*(1-index_decimal) + ref_p1*index_decimal;
+        UnpolarizedSpectrum value = Vector3f(ref_blend, ref_blend, ref_blend);
         // UnpolarizedSpectrum value = m_reflectance->eval(si, active);
         bs.pdf = 1.f;
-        // printf("value.x = %f\n", m_reflectance->eval(si, active).x());
 
         return {bs, depolarizer<Spectrum>(value) & (active && bs.pdf > 0.f)};
     }
@@ -431,6 +609,15 @@ public:
 
 // フィールド
 private:
+    // 表面反射光関係
+    ref<Texture> m_specular_reflectance;
+    ref<Texture> m_specular_transmittance;
+    MicrofacetType m_type;
+    ref<Texture> m_alpha_u, m_alpha_v;
+    Float m_eta, m_inv_eta;
+    bool m_sample_visible;
+
+    // 再帰反射光関係
     uint32_t M; // LUTのphiサイズ
     uint32_t N; // LUTのthetaサイズ
     uint32_t rayshift_N; // rayshift_LUTのphiサイズ
@@ -439,20 +626,15 @@ private:
     float a, reflectance;
     int angle, angle_index;
     ScalarFloat *m_data;
-    // DiscreteDistribution<Float> m_pdfdata;
     DiscreteDistribution2D<Float, 2> m_pdfdata;
-    // DiscreteDistribution<Float> m_rayshiftLUT;
     DiscreteDistribution2D<Float, 2> m_rayshiftLUT_list;
     ScalarFloat offset;
     ref<Texture> m_angle;
     ref<Texture> m_cornersize;
     ref<Texture> m_shiftoffset;
     bool m_isEstimation;
-    // float alist[10] = {9.93020, 7.88426, 7.84838, 7.15263, 7.38482, 5.10610, 3.51115, 2.45607, 1.68079, 1.17931};
-    float alist[10] = {9.93020, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9};
-    // float reflist[10] = {0.33505, 0.296091, 0.28343, 0.26988, 0.26051, 0.21822, 0.16955, 0.15701, 0.15030, 0.10973};
+    float alist[10] = {8.97515869140625, 10.97819995880127, 10.85496711730957, 8.351812362670898, 8.03887939453125, 4.881270408630371, 3.225633144378662, 2.2548987865448, 1.620800495147705};
     DiscreteDistribution<Float> reflist;
-    // float reflist[10] = {0.33505, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973, 0.10973};
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(sinc_shift4, BSDF)
