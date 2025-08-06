@@ -18,6 +18,10 @@ add_plugin(shapegroup   shapegroup.cpp)
 add_plugin(instance     instance.cpp)
 add_plugin(merge        merge.cpp)
 
+add_plugin(mytruncatedcylinder     mytruncatedcylinder.cpp)
+add_plugin(myhalfcylinder          myhalfcylinder.cpp)
+add_plugin(myhalfsphere            myhalfsphere.cpp)
+
 if (MI_ENABLE_EMBREE)
     target_link_libraries(sphere   PRIVATE embree)
     target_link_libraries(instance PRIVATE embree)

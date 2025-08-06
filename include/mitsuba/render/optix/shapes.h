@@ -11,6 +11,11 @@
 #include "sphere.cuh"
 #include "bsplinecurve.cuh"
 #include "linearcurve.cuh"
+
+// 以下追加
+#include "mytruncatedcylinder.cuh"
+#include "myhalfcylinder.cuh"
+#include "myhalfsphere.cuh"
 #else
 
 #include <unordered_map>
@@ -32,6 +37,11 @@ enum OptixShapeType {
     Sphere,
     Cylinder,
     SDFGrid,
+    // 以下追加
+    MyTruncatedCylinder,
+    MyHalfCylinder,
+    MyHalfSphere,
+
     NumOptixShapeTypes
 };
 static std::string OPTIX_SHAPE_TYPE_NAMES[NumOptixShapeTypes] = {
@@ -41,7 +51,11 @@ static std::string OPTIX_SHAPE_TYPE_NAMES[NumOptixShapeTypes] = {
     "Rectangle",
     "Sphere",
     "Cylinder",
-    "SDFGrid"
+    "SDFGrid",
+    // 以下追加
+    "MyTruncatedCylinder",
+    "MyHalfCylinder",
+    "MyHalfSphere"
 };
 static std::unordered_map<std::string, size_t> OPTIX_SHAPE_TYPE_INDEX = [](){
     std::unordered_map<std::string, size_t> out;
@@ -53,7 +67,9 @@ static std::unordered_map<std::string, size_t> OPTIX_SHAPE_TYPE_INDEX = [](){
 
 /// Defines the ordering of the shapes for OptiX (hitgroups, SBT)
 static OptixShapeType OPTIX_SHAPE_ORDER[] = {
-    BSplineCurve, LinearCurve, Disk, Rectangle, Sphere, Cylinder, SDFGrid
+    BSplineCurve, LinearCurve, Disk, Rectangle, Sphere, Cylinder, SDFGrid,
+    // 以下追加
+    MyTruncatedCylinder, MyHalfCylinder, MyHalfSphere
 };
 
 static constexpr size_t OPTIX_SHAPE_TYPE_COUNT = std::size(OPTIX_SHAPE_ORDER);
