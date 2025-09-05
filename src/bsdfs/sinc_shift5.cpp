@@ -25,8 +25,10 @@ using json = nlohmann::json;
 
 NAMESPACE_BEGIN(mitsuba)
 
+template <typename T> constexpr auto SqrtThree = dr::scalar_t<T>(1.73205080756887729353);
+
 template <typename Float, typename Spectrum>
-class sinc_shift3 final : public BSDF<Float, Spectrum>
+class sinc_shift5 final : public BSDF<Float, Spectrum>
 {
 // 関数（コンストラクタやデストラクタ、その他）
 public:
@@ -34,7 +36,7 @@ public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture)
 
-    sinc_shift3(const Properties &props) : Base(props)
+    sinc_shift5(const Properties &props) : Base(props)
     {
         m_rrrw = m_rrrh = 175.0;
         m_flags = BSDFFlags::DiffuseReflection | BSDFFlags::FrontSide;
@@ -53,9 +55,9 @@ public:
         // offset = 0.0001555555555554644*1.5*dr::Pi<Float>;
         // offset = 0.0003*dr::Pi<Float>;
         // offset = 18.0/(3600.0*180.0)*dr::Pi<Float>;
-        offset = 0.0001555555555554644*dr::Pi<Float>;
+        // offset = 0.0001555555555554644*dr::Pi<Float>;
         // offset = 0.00005*dr::Pi<Float>;
-        // offset = 0.0;
+        offset = 0.0;
 
         // make_rayshift_array();
 
@@ -95,8 +97,11 @@ public:
         for (int i = 0; i < N; ++i)
         {
             if (a < 1000) {
-                ScalarFloat arg = (a*300/dr::cos(offset)) * dr::tan((dr::Pi<Float>*i/(2.0f*N) - offset));
-                ScalarFloat sincvalue = dr::pow(dr::sin(arg), expo) / dr::pow(arg, expo);
+                ScalarFloat theta = (dr::Pi<Float>*i/(2.0f*N) - offset);
+                ScalarFloat arg = (a*300/dr::cos(offset)) * dr::tan(theta);
+                ScalarFloat sincvalue = 300*sin(arg)*sin(arg) / (arg*arg*dr::cos(theta)*dr::cos(theta));
+                // ScalarFloat sincvalue = 300*dr::pow(dr::sin(arg), expo) / (a*300*dr::sin(theta));
+                // ScalarFloat sincvalue = 300*dr::pow(dr::sin(arg), expo) / (arg*arg * (300*300 + arg*arg));
 
                 // if (i >= 28000) sincvalue = 0.f;
                 // printf("%d = %f ", i, sincvalue);
@@ -269,15 +274,20 @@ public:
         // printf("point = %f\n", point);
         point = dr::select(point >= 0.f, point, 0.f); // point < 0のとき0にする
         Float random2 = rand(rng), random3 = rand(rng);
-        Float del_phi = 2.0*dr::Pi<Float> * random2; // 角度の差分にする
+
+        Int32 theta_c = 60*(dr::floor(theta) / 60);
+        Float s_prime = shift / cornersize;
+        Float d = (SqrtThree<Float>-1)*cornersize;
+        Float r = dr::sqrt(s_prime*s_prime + (4-2*SqrtThree<Float>) - 2*(SqrtThree<Float>-1)*s_prime*dr::cos(theta-theta_c))*cornersize;
+        Float theta_rest = dr::asin(r*dr::sin(theta-theta_c)/d);
+        Float del_phi = theta + dr::Pi<Float> - theta_rest;
+        // Float del_phi = 2*dr::Pi<Float>*random2;
 
         Float random1 = rand(rng);
-        // Float offset2 = 0.0001555555555554644*dr::Pi<Float>;
-        // Float offset2 = 0.00019055555555558268*dr::Pi<Float>;
-        // Float offset2 = 0.00030*dr::Pi<Float>;
-        Float offset2 = 0.0001555555555554644*2.5*dr::Pi<Float>;
-        // Float del_theta = dr::Pi<Float>*point/(2.0*N) + offset2;
-        Float del_theta = dr::Pi<Float>*point/(2.0*N) + offset;
+        // Float del_theta = dr::Pi<Float>*point/(2.0*N) + offset;
+        // Float del_theta = dr::Pi<Float>*point/(2.0*N) + dr::atan(r/300);
+        Float del_theta = dr::Pi<Float>*point/(2.0*N);
+        // Float del_theta = 2.0*dr::Pi<Float>*random1;
 
         Float del_phi_offset = (2.0f*dr::Pi<Float>)*random3; // 角度の差分にする
         Float cos_offset_phi = dr::cos(del_phi_offset), sin_offset_phi = dr::sin(del_phi_offset);
@@ -291,25 +301,14 @@ public:
         Vector3f wo = rotate(delvec, norm, si.wi);
         bs.wo = wo;
 
-        // Vector3f wo = rotate(delvec, norm, offsetvec);
-        // Vector3f wo_true = rotate(wo, norm, si.wi);
-        // bs.wo = wo_true;
-
         bs.sampled_type =+ BSDFFlags::DiffuseReflection;
         bs.eta = 1.f;
 
-        // Float sincvalue = m_pdfdata.eval_pmf_floatindex(point, active)*sum_rawPDF;
-        // UnpolarizedSpectrum value = reflectance*sincvalue;
-        // bs.pdf = sincvalue;
-        
-        // float a, reflectance;
-        // if (m_isEstimation) {a = m_a.get()->max(); reflectance = m_reflectance.get()->max();}
-        // else {a = alist[angle_index]; reflectance = reflist[angle_index];}
-        // float reflectance = m_reflectance.get()->max();
-
         UnpolarizedSpectrum value = m_reflectance->eval(si, active);
         bs.pdf = 1.f;
-        // printf("value = %f\n", value.x());
+        // Float sincvalue = m_pdfdata.eval_pmf(point, active);
+        // UnpolarizedSpectrum value = m_reflectance->eval(si, active)*sincvalue;
+        // bs.pdf = sincvalue;
 
         return {bs, depolarizer<Spectrum>(value) & (active && bs.pdf > 0.f)};
     }
@@ -431,7 +430,7 @@ public:
 
     std::string to_string() const override {
         std::ostringstream oss;
-        oss << "sinc_shift3[" << std::endl
+        oss << "sinc_shift5[" << std::endl
             << " reflectance = " << string::indent(m_reflectance) << std::endl
             << "a = " << string::indent(m_a) << std::endl
             << "]";
@@ -464,6 +463,6 @@ private:
     float reflist[10] = {0.33505, 0.296091, 0.28343, 0.26988, 0.26051, 0.21822, 0.16955, 0.15701, 0.15030, 0.10973};
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(sinc_shift3, BSDF)
-MI_EXPORT_PLUGIN(sinc_shift3, "sinc_shift3")
+MI_IMPLEMENT_CLASS_VARIANT(sinc_shift5, BSDF)
+MI_EXPORT_PLUGIN(sinc_shift5, "sinc_shift5")
 NAMESPACE_END(mitsuba)

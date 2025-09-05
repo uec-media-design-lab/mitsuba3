@@ -37,7 +37,7 @@ public:
     using Index = dr::uint32_array_t<Float>;
 
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
-    MI_IMPORT_TYPES(Texture)
+    MI_IMPORT_TYPES(Texture, MicrofacetDistribution)
 
     sinc_shift4(const Properties &props) : Base(props)
     {
@@ -172,11 +172,12 @@ public:
                     dr::abs(sincvalue),
                     ScalarFloat(1.0)
                 );
+                if (j == 0) sincvalue = 1.0f;
                 if (j >= 28000) sincvalue = 0.0f;
                 data[idx++] = sincvalue;
                 sums[i] += sincvalue;
             }
-            printf("a[%d] = %f, sum = %f", i, a, sums[i]);
+            // printf("a[%d] = %f, sum = %f", i, a, sums[i]);
         }
 
         // 正規化（ごり押し）
@@ -185,17 +186,19 @@ public:
             for (int j = 0; j < N; ++j)
             {
                 data[idx++] /= sums[i];
-                if (j < 20) printf("data[%d] = %f\n", i*N+j, data[i*N+j]);
+                // if (j < 20) printf("data[%d] = %f\n", i*N+j, data[i*N+j]);
             }
         }
 
-        printf("size in make x = %d, y = %d\n", size.x(), size.y());
+        // printf("size in make x = %d, y = %d\n", size.x(), size.y());
         DiscreteDistribution2D<Float, 2> dd(&data[0], size);
         m_pdfdata = dd;
 
-        float reflist_float[10] = {0.3149740397930145, 0.31731319427490234, 0.303494393825531, 0.2993064522743225, 0.2851271331310272, 0.26412859559059143, 0.22004221379756927, 0.21191012859344482, 0.20523042976856232};
+        // float reflist_float[10] = {0.32568854093551636, 0.32800814509391785, 0.32338041067123413, 0.3228645622730255, 0.30585646629333496, 0.2846772074699402, 0.2594766318798065, 0.23441781103610992, 0.23485194146633148, 0.1863688826560974};
+        float reflist_float[10] = {0.251913845539093, 0.24916136264801025, 0.24612076580524445, 0.2393658608198166, 0.23089219629764557, 0.22330009937286377, 0.20480982959270477, 0.18945062160491943, 0.16936106979846954, 0.2019372433423996};
+        // float reflist_float[10] = {0.3257, 0.3280, 0.3234, 0.3229, 0.3059, 0.2847, 0.2595, 0.2344, 0.2349, 0.1864};
         ScalarFloat data2[10];
-        for (int i = 0; i < 9; ++i)
+        for (int i = 0; i < 10; ++i)
             data2[i] = reflist_float[i];
         DiscreteDistribution<Float> rl(&data2[0], 10);
         reflist = rl;
@@ -228,11 +231,11 @@ public:
         int idx = 0;
         for (int i = 0; i < 10; ++i) {
             for (int j = 0; j < num_j; ++j) {
-                if (j == 0) printf("m_rayshift_list[%d][%d] = %f\n", i, j, m_rayshift_list[i][j]);
+                // if (j == 0) printf("m_rayshift_list[%d][%d] = %f\n", i, j, m_rayshift_list[i][j]);
                 data[idx++] = m_rayshift_list[i][j];
             }
         }
-        printf("num_i = %d, num_j = %d, idx = %d\n", num_i, num_j, idx);
+        // printf("num_i = %d, num_j = %d, idx = %d\n", num_i, num_j, idx);
         ScalarVector2u size(num_j, num_i);
         DiscreteDistribution2D<Float, 2> dd(&data[0], size);
         m_rayshiftLUT_list = dd;
@@ -312,104 +315,109 @@ public:
         Float theta_i = dr::acos(cos_theta_i);
         active &= cos_theta_i > 0.f;
 
+        bool has_reflection    = ctx.is_enabled(BSDFFlags::GlossyReflection, 0),
+        has_transmission  = ctx.is_enabled(BSDFFlags::GlossyTransmission, 1);
+
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
         if (unlikely(dr::none_or<false>(active) || !ctx.is_enabled(BSDFFlags::DiffuseReflection))) return {bs, .0f};
 
         auto rng = setRandomGenerator(sample1*10000000);
 
         // ----------- 表面反射光 --------------
-        // MicrofacetDistribution distr(m_type,
-        //                              m_alpha_u->eval_1(si, active),
-        //                              m_alpha_v->eval_1(si, active),
-        //                              m_sample_visible);
-        // // Walter, et al
-        // MicrofacetDistribution sample_distr(distr);
-        // if (unlikely(!m_sample_visible))
-        //     sample_distr.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
+        MicrofacetDistribution distr(m_type,
+                                     m_alpha_u->eval_1(si, active)*Float(1.0),
+                                     m_alpha_v->eval_1(si, active)*Float(1.0),
+                                     m_sample_visible);
+        MicrofacetDistribution sample_distr(distr);
+        
+        // Walter, et al
+        if (unlikely(!m_sample_visible))
+            sample_distr.scale_alpha(1.2f - .2f * dr::sqrt(dr::abs(cos_theta_i)));
 
-        // // Microfacet法線をサンプリング
-        // Normal3f m;
-        // std::tie(m, bs.pdf) =
-        //     sample_distr.sample(dr::mulsign(si.wi, cos_theta_i), sample2);
-        // active &= dr::neq(bs.pdf, 0.f);
+        // Microfacet法線をサンプリング
+        Normal3f m;
+        std::tie(m, bs.pdf) = sample_distr.sample(dr::mulsign(si.wi, cos_theta_i), sample2);
+        active &= dr::neq(bs.pdf, 0.f);
 
-        // auto [F, cos_theta_t, eta_it, eta_ti] =
-        //     fresnel(dr::dot(si.wi, m), m_eta);
+        // フレネル項
+        auto [F, cos_theta_t, eta_it, eta_ti] = fresnel(dr::dot(si.wi, m), m_eta);
 
-        // // Select the lobe to be sampled
-        // UnpolarizedSpectrum weight;
-        // Mask selected_r, selected_t;
-        // if (likely(has_reflection && has_transmission)) {
-        //     selected_r = sample1 <= F && active;
-        //     weight = 1.f;
-        //     /* For differentiable variants, lobe choice has to be detached to avoid bias.
-        //         Sampling weights should be computed accordingly. */
-        //     if constexpr (dr::is_diff_v<Float>) {
-        //         if (dr::grad_enabled(F)) {
-        //             weight = dr::select(selected_r, F / dr::detach(F), (1 - F) / (1.f - dr::detach(F)));
-        //         }
-        //     }
-        //     bs.pdf *= dr::detach(dr::select(selected_r, F, 1.f - F));
-        // } else {
-        //     if (has_reflection || has_transmission) {
-        //         selected_r = Mask(has_reflection) && active;
-        //         weight = has_reflection ? F : (1.f - F);
-        //     } else {
-        //         return { bs, 0.f };
-        //     }
-        // }
+        // Select the lobe to be sampled
+        UnpolarizedSpectrum weight;
+        Mask selected_r, selected_t;
+        if (likely(has_reflection && has_transmission)) {
+            // selected_r = sample1 <= F && active;
+            selected_r = sample1 <= m_specular_reflectance->eval(si, active).x() && active;
+            weight = 1.f;
+            /* For differentiable variants, lobe choice has to be detached to avoid bias.
+                Sampling weights should be computed accordingly. */
+            if constexpr (dr::is_diff_v<Float>) {
+                if (dr::grad_enabled(F)) {
+                    weight = dr::select(selected_r, F / dr::detach(F), (1 - F) / (1.f - dr::detach(F)));
+                }
+            }
+            bs.pdf *= dr::detach(dr::select(selected_r, F, 1.f - F));
+        } else {
+            if (has_reflection || has_transmission) {
+                selected_r = Mask(has_reflection) && active;
+                weight = has_reflection ? F : (1.f - F);
+            } else {
+                return { bs, 0.f };
+            }
+        }
 
-        // selected_t = !selected_r && active;
+        // 表面を透過する場合
+        selected_t = !selected_r && active;
+        bs.eta               = dr::select(selected_r, Float(1.f), eta_it);
+        bs.sampled_component = dr::select(selected_r, UInt32(0), UInt32(1));
+        bs.sampled_type      = dr::select(selected_r,
+                                      UInt32(+BSDFFlags::GlossyReflection),
+                                      UInt32(+BSDFFlags::GlossyTransmission));
 
-        // bs.eta               = dr::select(selected_r, Float(1.f), eta_it);
-        // bs.sampled_component = dr::select(selected_r, UInt32(0), UInt32(1));
-        // bs.sampled_type      = dr::select(selected_r,
-        //                               UInt32(+BSDFFlags::GlossyReflection),
-        //                               UInt32(+BSDFFlags::GlossyTransmission));
+        Float dwh_dwo = 0.f; // Jacobian
 
-        // Float dwh_dwo = 0.f;
+        // 表面反射する場合
+        if (dr::any_or<true>(selected_r)) {
+            // Perfect specular reflection based on the microfacet normal
+            bs.wo[selected_r] = reflect(si.wi, m);
 
-        // // Reflection sampling
-        // if (dr::any_or<true>(selected_r)) {
-        //     // Perfect specular reflection based on the microfacet normal
-        //     bs.wo[selected_r] = reflect(si.wi, m);
+            if (m_specular_reflectance)
+                weight[selected_r] *= m_specular_reflectance->eval(si, selected_r);
 
-        //     if (m_specular_reflectance)
-        //         weight[selected_r] *= m_specular_reflectance->eval(si, selected_r);
+            // Jacobian of the half-direction mapping
+            dwh_dwo = dr::rcp(4.f * dr::dot(bs.wo, m));
+            // printf("reflection\n");
+        }
 
-        //     // Jacobian of the half-direction mapping
-        //     dwh_dwo = dr::rcp(4.f * dr::dot(bs.wo, m));
-        // }
+        // 透過する場合
+        if (dr::any_or<true>(selected_t)) {
+            // Perfect specular transmission based on the microfacet normal
+            // bs.wo[selected_t]  = refract(si.wi, m, cos_theta_t, eta_ti);
+            bs.wo[selected_t] = si.wi;
 
-        // // Transmission sampling
-        // if (dr::any_or<true>(selected_t)) {
-        //     // Perfect specular transmission based on the microfacet normal
-        //     bs.wo[selected_t]  = refract(si.wi, m, cos_theta_t, eta_ti);
+            /* For transmission, radiance must be scaled to account for the solid
+               angle compression that occurs when crossing the interface. */
+            UnpolarizedSpectrum factor = (ctx.mode == TransportMode::Radiance) ? dr::sqr(eta_ti) : Float(1.f);
 
-        //     /* For transmission, radiance must be scaled to account for the solid
-        //        angle compression that occurs when crossing the interface. */
-        //     UnpolarizedSpectrum factor = (ctx.mode == TransportMode::Radiance) ? dr::sqr(eta_ti) : Float(1.f);
+            if (m_specular_transmittance)
+                factor *= m_specular_transmittance->eval(si, selected_t);
 
-        //     if (m_specular_transmittance)
-        //         factor *= m_specular_transmittance->eval(si, selected_t);
+            // weight[selected_t] *= factor;
+            weight[selected_t] = 1.f;
 
-        //     weight[selected_t] *= factor;
+            // Jacobian of the half-direction mapping
+            dr::masked(dwh_dwo, selected_t) =
+                (dr::sqr(bs.eta) * dr::dot(bs.wo, m)) /
+                 dr::sqr(dr::dot(si.wi, m) + bs.eta * dr::dot(bs.wo, m));
+        }
 
-        //     // Jacobian of the half-direction mapping
-        //     dr::masked(dwh_dwo, selected_t) =
-        //         (dr::sqr(bs.eta) * dr::dot(bs.wo, m)) /
-        //          dr::sqr(dr::dot(si.wi, m) + bs.eta * dr::dot(bs.wo, m));
-        // }
+        if (likely(m_sample_visible))
+            weight *= distr.smith_g1(bs.wo, m);
+        else
+            weight *= distr.G(si.wi, bs.wo, m) * dr::dot(si.wi, m) /
+                      (cos_theta_i * Frame3f::cos_theta(m));
 
-        // if (likely(m_sample_visible))
-        //     weight *= distr.smith_g1(bs.wo, m);
-        // else
-        //     weight *= distr.G(si.wi, bs.wo, m) * dr::dot(si.wi, m) /
-        //               (cos_theta_i * Frame3f::cos_theta(m));
-
-        // bs.pdf *= dr::abs(dwh_dwo);
-
-        // // return { bs, depolarizer<Spectrum>(weight) & active };
+        bs.pdf *= dr::abs(dwh_dwo);
 
         
         // --------------- 再帰反射光 --------------------
@@ -427,8 +435,8 @@ public:
         Float r1 = rand(rng); Float r2 = rand(rng);
         // sampled_p2f = m_rayshiftLUT.sample(r1);
         
-        printf("cos(theta_i) = %f\n", cos_theta_i);
-        printf("index = %d\n", index);
+        // printf("cos(theta_i) = %f\n", cos_theta_i);
+        // printf("index = %d\n", index);
 
         std::tie(sampled_p1f, pdfvalue, sampled) = m_rayshiftLUT_list.sample1D(sample1, index, active);
         
@@ -442,12 +450,12 @@ public:
 
         // ----- 出射光のサンプリング -----
         Float point; Float sincvalue; Float sample; Float point_p1; Float sincvalue_p1; Float sample_p1;
-        std::tie(point, sincvalue, sample) = m_pdfdata.sample1D(sample2.y(), index, active);
+        std::tie(point, sincvalue, sample) = dr::select(index <= 9, m_pdfdata.sample1D(sample2.y(), index, active), m_pdfdata.sample1D(sample2.y(), 9, active));
         point = dr::select(point >= 0.f, point, 0.f); // point < 0のとき0にする
-        std::tie(point_p1, sincvalue_p1, sample_p1) = dr::select(index < 9, m_pdfdata.sample1D(sample, index+1, active), m_pdfdata.
-        sample1D(sample, index, active));
+        std::tie(point_p1, sincvalue_p1, sample_p1) = dr::select(index < 9, m_pdfdata.sample1D(sample, index+1, active), m_pdfdata.sample1D(sample, index, active));
         point_p1 = dr::select(point_p1 >= 0.f, point_p1, 0.f); // point < 0のとき0にする
         Float point_blend = point*(1-index_decimal) + point_p1*index_decimal;
+        // Float point_blend = point;
         
         Float random2 = rand(rng), random3 = rand(rng);
         Float del_phi = 2.0*dr::Pi<Float> * random2; // 角度の差分にする
@@ -466,19 +474,22 @@ public:
 
         Vector3f norm = Vector3f(0.f, 0.f, 1.f);
         Vector3f wo = rotate(delvec, norm, si.wi);
-        bs.wo = wo;
+        bs.wo[selected_t] = wo;
 
         bs.sampled_type =+ BSDFFlags::DiffuseReflection;
         bs.eta = 1.f;
 
-        Float ref = reflist.eval_pmf(index, active);
+        Float ref = dr::select(index <= 9, reflist.eval_pmf(index, active), reflist.eval_pmf(9, active));
+        // Float ref = reflist.eval_pmf(0, active);
         Float ref_p1 = dr::select(index < 9, reflist.eval_pmf(index+1, active), reflist.eval_pmf(9, active));
         Float ref_blend = ref*(1-index_decimal) + ref_p1*index_decimal;
-        UnpolarizedSpectrum value = Vector3f(ref_blend, ref_blend, ref_blend);
+        // Float ref_blend = ref;
+        weight[selected_t] *= Vector3f(ref_blend, ref_blend, ref_blend);
+        // weight[selected_t] *= ref;
         // UnpolarizedSpectrum value = m_reflectance->eval(si, active);
-        bs.pdf = 1.f;
+        bs.pdf *= 1.f;
 
-        return {bs, depolarizer<Spectrum>(value) & (active && bs.pdf > 0.f)};
+        return {bs, depolarizer<Spectrum>(weight) & (active && bs.pdf > 0.f)};
     }
 
     Spectrum eval(
@@ -633,7 +644,10 @@ private:
     ref<Texture> m_cornersize;
     ref<Texture> m_shiftoffset;
     bool m_isEstimation;
-    float alist[10] = {8.97515869140625, 10.97819995880127, 10.85496711730957, 8.351812362670898, 8.03887939453125, 4.881270408630371, 3.225633144378662, 2.2548987865448, 1.620800495147705};
+    // float alist[10] = {6.452459335327148, 5.760225296020508, 4.853700160980225, 3.8085577487945557, 3.105637788772583, 2.275968074798584, 1.8654732704162598, 1.4826805591583252, 1.124540090560913, 0.8543257713317871};
+    // float alist[10] = {0.8630073666572571, 0.8294918537139893, 0.8363253474235535, 0.7731510400772095, 0.6666412949562073, 0.5033000111579895, 0.4197179973125458, 0.3836476504802704, 0.34321102499961853, 0.13942649960517883};
+    float alist[10] = {1.2247763872146606, 1.174414038658142, 1.0820084810256958, 0.960394024848938, 0.8475515842437744, 0.6400105953216553, 0.5727102160453796, 0.41668373346328735, 0.396972626447677612, 0.3177734911441802979};
+    // float alist[10] = {6.4525, 5.7602, 4.8537, 3.8086, 3.1056, 2.2760, 1.8655, 1.4827, 1.1245, 0.8543};
     DiscreteDistribution<Float> reflist;
 };
 
